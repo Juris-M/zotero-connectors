@@ -81,7 +81,7 @@ Zotero.API = new function() {
 			var signature = oauthSimple.sign();
 			
 			// add parameters
-			var url = signature.signed_url+"&library_access=1&notes_access=0&write_access=1&name=Zotero Connector for ";
+			var url = signature.signed_url+"&library_access=1&notes_access=0&write_access=1&name=Juris-M Connector for ";
 			if (Zotero.isChrome) {
 				url += "Chrome";
 			} else if(Zotero.isSafari) {

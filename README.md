@@ -1,4 +1,4 @@
-# Zotero Connectors
+# Juris-M Connectors
 
 ## Building
 

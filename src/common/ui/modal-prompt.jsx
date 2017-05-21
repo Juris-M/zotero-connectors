@@ -95,7 +95,7 @@ Zotero.ui.ModalPrompt = React.createClass({
 	
 	getDefaultProps: function() {
 		return {
-			title: "Zotero Connector",
+			title: "Juris-M Connector",
 			checkbox: false,
 			checkboxText: "",
 			checkboxBlock: false,

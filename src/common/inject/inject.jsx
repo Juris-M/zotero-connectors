@@ -296,12 +296,12 @@ Zotero.Inject = new function() {
 	// TODO: Add "For more information" with link to blog post
 	this.firstUsePrompt = function () {
 		return this.confirm({
-			title: "You’ve installed the Zotero Connector!",
+			title: "You’ve installed the Juris-M Connector!",
 			button1Text: "Got it",
 			button2Text: "",
 			message: `
-				The Zotero Connector enables you to save references to Zotero from your web browser in a single click.<br><br>
-				<em><strong>Looking for your Zotero data?</strong> If you were previously using Zotero for Firefox, you’ll need to <a href="https://www.zotero.org/download/">download</a> the standalone Zotero application to access your local Zotero data going forward.</em>
+				The Juris-M Connector enables you to save references to Juris-M from your web browser in a single click.<br><br>
+				<em><strong>Looking for your Juris-M data?</strong> If you were previously using Juris-M for Firefox, you’ll need to <a href="https://juris-m.github.io/downloads/">download</a> the standalone Juris-M application to access your local Juris-M data going forward.</em>
 			`,
 			clickOutsideToClose: true
 		});
@@ -312,10 +312,10 @@ Zotero.Inject = new function() {
 			button1Text: "Try Again",
 			button2Text: "Cancel",
 			button3Text: "Enable Saving to Zotero.org",
-			title: "Zotero is Offline",
+			title: "Juris-M is Offline",
 			message: `
-				The Zotero Connector was unable to communicate with the Zotero desktop application. The Connector can save some pages directly to your zotero.org account, but for best results you should make sure Zotero is open before attempting to save.<br/><br/>
-				You can <a href="https://www.zotero.org/download/">download Zotero</a> or <a href="https://www.zotero.org/support/kb/connector_zotero_unavailable">troubleshoot the connection</a> if necessary.
+				The Juris-M Connector was unable to communicate with the Juris-M desktop application. The Connector can save some pages directly to your zotero.org account, but for best results you should make sure Juris-M is open before attempting to save.<br/><br/>
+				You can <a href="https://juris-m.github.io/downloads/">download Juris-M</a> or <a href="https://www.zotero.org/support/kb/connector_zotero_unavailable">troubleshoot the connection</a> if necessary.
 			`
 		}).then(function(result) {
 			switch (result.button) {

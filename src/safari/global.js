@@ -140,9 +140,9 @@ Zotero.Connector_Browser = new function() {
 	 */
 	this.onIncompatibleStandaloneVersion = function(zoteroVersion, standaloneVersion) {
 		if(_incompatibleVersionMessageShown) return;
-		alert('Zotero Connector for Safari '+zoteroVersion+' is incompatible with the running '+
+		alert('Juris-M Connector for Safari '+zoteroVersion+' is incompatible with the running '+
 			'version of Zotero Standalone'+(standaloneVersion ? " ("+standaloneVersion+")" : "")+
-			'. Zotero Connector will continue to operate, but functionality that relies upon '+
+			'. Juris-M Connector will continue to operate, but functionality that relies upon '+
 			'Zotero Standalone may be unavaliable.\n\n'+
 			'Please ensure that you have installed the latest version of these components. See '+
 			'https://www.zotero.org/support/standalone for more details.');

@@ -90,7 +90,7 @@ Zotero.ContentTypeHandler = {
 				Zotero.ContentTypeHandler.importFile(details, 'import');
 			} else {
 				Zotero.ContentTypeHandler.confirm(details, `Import items from ${URI.host} into Zotero?<br/><br/>` +
-					'You can manage automatic file importing in Zotero Connector preferences.',
+					'You can manage automatic file importing in Juris-M Connector preferences.',
 					'Always allow for this site').then(function(response) {
 					if (response.button == 1) {
 						Zotero.debug(`ContentTypeHandler: Importing a file ${details.url}`);
