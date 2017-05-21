@@ -63,7 +63,7 @@ if(isTopWindow) {
 	var onLoad = function() {
 		if(loaded) return;
 		loaded = true;
-		if(document.documentURI === "http://127.0.0.1:23119/provo/run"
+		if(document.documentURI === "http://127.0.0.1:24119/provo/run"
 				&& document.documentElement.textContent === "fnord") {
 			window.setTimeout(function() {
 				Zotero.TranslatorTester.runAutomatedTesting();

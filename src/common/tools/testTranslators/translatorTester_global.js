@@ -90,7 +90,7 @@ Zotero.TranslatorTester.runAutomatedTesting = new function() {
 		window.setTimeout(function() {
 			Zotero_TranslatorTesters.runAllTests(4, {}, function(data) {
 				isRunning = false;
-				Zotero.HTTP.doPost("http://127.0.0.1:23119/provo/save", JSON.stringify(data),
+				Zotero.HTTP.doPost("http://127.0.0.1:24119/provo/save", JSON.stringify(data),
 						function() {}, {"Content-Type":"application/json"});
 			});
 		}, 60000);
@@ -142,5 +142,5 @@ Zotero_TranslatorTester.prototype.fetchPageAndRunTest = function(test, testDoneC
  * Runs non-web tests in a different tab
  */
 Zotero_TranslatorTester.prototype.runTest = function(test, doc, testDoneCallback) {
-	this.fetchPageAndRunTest(test, testDoneCallback, "http://127.0.0.1:23119/");
+	this.fetchPageAndRunTest(test, testDoneCallback, "http://127.0.0.1:24119/");
 }
