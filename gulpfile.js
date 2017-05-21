@@ -69,6 +69,7 @@ var injectInclude = [
 	'zotero/translation/translator.js',
 	'translate_item.js',
 	'zotero/connectorTypeSchemaData.js',
+    'zotero/dateparser.js',
 	'zotero/utilities.js',
 	'zotero/utilities_translate.js',
 	'inject/http.js',
