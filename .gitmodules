@@ -1,4 +1,4 @@
 [submodule "src/zotero"]
 	path = src/zotero
 	url = git://github.com/juris-m/zotero.git
-	branch = jurism
+	branch = jurism-5.0
