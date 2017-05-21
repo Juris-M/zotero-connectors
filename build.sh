@@ -127,6 +127,7 @@ BOOKMARKLET_INJECT_INCLUDE=("$EXTENSION_XPCOM_DIR/connector/cachedTypes.js" \
 	"$EXTENSION_XPCOM_DIR/connector/translate_item.js" \
 	"$SRCDIR/common/inject/translate_inject.js" \
 	"$SRCDIR/zotero/resource/schema/connectorTypeSchemaData.js" \
+	"$EXTENSION_XPCOM_DIR/dateparser.js" \
 	"$EXTENSION_XPCOM_DIR/utilities_translate.js" \
 	"$SRCDIR/bookmarklet/messaging_inject.js" \
 	"$SRCDIR/bookmarklet/inject_base.js")
@@ -249,6 +250,7 @@ for browser in "browserExt" "safari"; do
 	# Copy extension pieces
 	mkdir "$browser_builddir/zotero"
 	cp -r "$EXTENSION_XPCOM_DIR/utilities.js" \
+		"$EXTENSION_XPCOM_DIR/dateparser.js" \
 		"$EXTENSION_XPCOM_DIR/utilities_translate.js" \
 		"$EXTENSION_XPCOM_DIR/date.js" \
 		"$EXTENSION_XPCOM_DIR/debug.js" \
