@@ -23,8 +23,8 @@
     ***** END LICENSE BLOCK *****
 */
 
+// TODO: refactor this class
 Zotero.Connector = new function() {
-	const CONNECTOR_URI = "http://127.0.0.1:24119/";
 	const CONNECTOR_API_VERSION = 2;
 	
 	var _ieStandaloneIframeTarget, _ieConnectorCallbacks;
@@ -33,6 +33,7 @@ Zotero.Connector = new function() {
 	// http, so pinging Standalone at http://127.0.0.1 fails.
 	// Disable for all browsers, except IE, which may be used frequently with ZSA
 	this.isOnline = Zotero.isBookmarklet && !Zotero.isIE ? false : null;
+	this.shouldReportActiveURL = true;
 	
 	/**
 	 * Checks if Zotero is online and passes current status to callback
@@ -65,7 +66,11 @@ Zotero.Connector = new function() {
 			try {
 				var xdr = new XDomainRequest();
 				xdr.timeout = 700;
+<<<<<<< HEAD
 				xdr.open("POST", "http://127.0.0.1:24119/connector/ping", true);
+=======
+				xdr.open("POST", `${Zotero.Prefs.get('connector.url')}connector/ping`, true);
+>>>>>>> 71725f2447ae7ee1df928ef0c07e9988b07c5f51
 				xdr.onerror = function() {
 					Zotero.debug("Connector: XDomainRequest to Zotero Standalone experienced an error");
 					fail();
@@ -81,7 +86,11 @@ Zotero.Connector = new function() {
 					
 					_ieConnectorCallbacks = [];
 					var listener = function(event) {
+<<<<<<< HEAD
 						if(event.origin !== "http://127.0.0.1:24119"
+=======
+						if(!Zotero.Prefs.get('connector.url').includes(event.origin)
+>>>>>>> 71725f2447ae7ee1df928ef0c07e9988b07c5f51
 								|| event.source !== iframe.contentWindow) return;
 						if(event.stopPropagation) {
 							event.stopPropagation();
@@ -121,7 +130,11 @@ Zotero.Connector = new function() {
 					}
 					
 					var iframe = document.createElement("iframe");
+<<<<<<< HEAD
 					iframe.src = "http://127.0.0.1:24119/connector/ieHack";
+=======
+					iframe.src = `${Zotero.Prefs.get('connector.url')}connector/ieHack`;
+>>>>>>> 71725f2447ae7ee1df928ef0c07e9988b07c5f51
 					document.documentElement.appendChild(iframe);
 				};
 				xdr.send("");
@@ -130,10 +143,26 @@ Zotero.Connector = new function() {
 				fail();
 			}
 		} else {
-			Zotero.Connector.callMethod("ping", {}, function(status) {
-				callback(status !== false);
-			});
+			Zotero.Connector.ping().then(() => callback(true)).catch(() => callback(false));
 		}
+	}
+
+	this.reportActiveURL = function(url) {
+		if (!this.isOnline || !this.shouldReportActiveURL) return;
+		
+		let payload = {data: {activeURL: url}};
+		this.ping(payload);
+	}
+	
+	this.ping = function(payload={}) {
+		var deferred = Zotero.Promise.defer();
+		Zotero.Connector.callMethod("ping", payload, function(response, status) {
+			Zotero.Connector.shouldReportActiveURL = response && response.prefs && response.prefs.shouldReportActiveURL;
+			
+			if (response === false) return deferred.reject(status);
+			return deferred.resolve(response);
+		});
+		return deferred.promise;
 	}
 	
 	/**
@@ -210,13 +239,17 @@ Zotero.Connector = new function() {
 				var requestID = Zotero.Utilities.randomString();
 				_ieConnectorCallbacks[requestID] = newCallback;
 				_ieStandaloneIframeTarget.postMessage(JSON.stringify([null, "connectorRequest",
+<<<<<<< HEAD
 					[requestID, method, JSON.stringify(data)]]), "http://127.0.0.1:24119/connector/ieHack");
+=======
+					[requestID, method, JSON.stringify(data)]]), `${Zotero.Prefs.get('connector.url')}/connector/ieHack`);
+>>>>>>> 71725f2447ae7ee1df928ef0c07e9988b07c5f51
 			} else {
 				Zotero.debug("Connector: No iframe target; not sending to Standalone");
 				callback(false, 0);
 			}
 		} else {							// Other browsers can use plain doPost
-			var uri = CONNECTOR_URI + "connector/" + method + queryString;
+			var uri = Zotero.Prefs.get('connector.url') + "connector/" + method + queryString;
 			if (headers["Content-Type"] == 'application/json') {
 				data = JSON.stringify(data);
 			}

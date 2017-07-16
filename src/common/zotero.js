@@ -203,6 +203,7 @@ Zotero.Prefs = new function() {
 		"automaticSnapshots": true,
 		"connector.repo.lastCheck.localTime": 0,
 		"connector.repo.lastCheck.repoTime": 0,
+		"connector.url": ZOTERO_CONFIG.CONNECTOR_SERVER_URL,
 		"capitalizeTitles": false,
 		"interceptKnownFileTypes": true,
 		"allowedInterceptHosts": [],
@@ -221,10 +222,21 @@ Zotero.Prefs = new function() {
 	
 	this.get = function(pref) {
 		try {
-			if(localStorage["pref-"+pref]) return JSON.parse(localStorage["pref-"+pref]);
+			if("pref-"+pref in localStorage) return JSON.parse(localStorage["pref-"+pref]);
 		} catch(e) {}
-		if(DEFAULTS.hasOwnProperty(pref)) return DEFAULTS[pref];
+		if (DEFAULTS.hasOwnProperty(pref)) return DEFAULTS[pref];
 		throw "Zotero.Prefs: Invalid preference "+pref;
+	};
+	
+	this.getAll = function() {
+		let prefs = Object.assign({}, localStorage);
+		for (let k of Object.keys(prefs)) {
+			if (k.substr(0, 'pref-'.length) == 'pref-') {
+				prefs[k.substr('pref-'.length)] = prefs[k];
+			}
+			delete prefs[k];
+		}
+		return Zotero.Promise.resolve(Object.assign({}, DEFAULTS, prefs));
 	};
 	
 	this.getAsync = function(pref) {

@@ -12,7 +12,7 @@
 		"default_title": "Save to Zotero"
 	},
 	"permissions": ["http://*/*", "https://*/*", "tabs", "contextMenus", "cookies", 
-		"webRequest", "webRequestBlocking", "webNavigation", "notifications"],
+		"webRequest", "webRequestBlocking", "webNavigation"],
 	"background": {
 		"scripts": [
 			/*BACKGROUND SCRIPTS*/,
@@ -41,6 +41,7 @@
 			}
 		}
 	},
+	"minimum_chrome_version": "55",
 	"applications": {
 		"gecko": {
 			"id": "zotero@chnm.gmu.edu",

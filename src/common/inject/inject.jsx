@@ -293,7 +293,6 @@ Zotero.Inject = new function() {
 		}
 	};
 
-	// TODO: Add "For more information" with link to blog post
 	this.firstUsePrompt = function () {
 		return this.confirm({
 			title: "You’ve installed the Juris-M Connector!",
@@ -302,8 +301,7 @@ Zotero.Inject = new function() {
 			message: `
 				The Juris-M Connector enables you to save references to Juris-M from your web browser in a single click.<br><br>
 				<em><strong>Looking for your Juris-M data?</strong> If you were previously using Juris-M for Firefox, you’ll need to <a href="https://juris-m.github.io/downloads/">download</a> the standalone Juris-M application to access your local Juris-M data going forward.</em>
-			`,
-			clickOutsideToClose: true
+			`
 		});
 	};
 	
@@ -311,7 +309,7 @@ Zotero.Inject = new function() {
 		return this.confirm({
 			button1Text: "Try Again",
 			button2Text: "Cancel",
-			button3Text: "Enable Saving to Zotero.org",
+			button3Text: "Enable Saving to Online Library",
 			title: "Juris-M is Offline",
 			message: `
 				The Juris-M Connector was unable to communicate with the Juris-M desktop application. The Connector can save some pages directly to your zotero.org account, but for best results you should make sure Juris-M is open before attempting to save.<br/><br/>
