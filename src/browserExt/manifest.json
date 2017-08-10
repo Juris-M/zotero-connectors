@@ -12,7 +12,7 @@
 		"default_title": "Save to Zotero"
 	},
 	"permissions": ["http://*/*", "https://*/*", "tabs", "contextMenus", "cookies", 
-		"webRequest", "webRequestBlocking", "webNavigation"],
+		"webRequest", "webRequestBlocking", "webNavigation", "storage"],
 	"background": {
 		"scripts": [
 			/*BACKGROUND SCRIPTS*/,
@@ -20,7 +20,8 @@
 		]
 	},
 	"web_accessible_resources": [
-		"images/*"
+		"images/*",
+		"test/data/journalArticle-single.html"
 	],
 	"content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
 	"homepage_url": "https://www.zotero.org/",
@@ -45,7 +46,8 @@
 	"applications": {
 		"gecko": {
 			"id": "zotero@chnm.gmu.edu",
-			"update_url": "https://www.zotero.org/download/connector/firefox/updates.json"
+			"update_url": "https://www.zotero.org/download/connector/firefox/updates.json",
+			"strict_min_version": "51.0"
 		}
 	}
 }

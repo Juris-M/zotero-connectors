@@ -1,7 +1,7 @@
 /*
 	***** BEGIN LICENSE BLOCK *****
 	
-	Copyright © 2016 Center for History and New Media
+	Copyright © 2017 Center for History and New Media
 					George Mason University, Fairfax, Virginia, USA
 					http://zotero.org
 	
@@ -23,27 +23,6 @@
 	***** END LICENSE BLOCK *****
 */
 
-/* We do not want to bundle files in a browser extension,
- * however using `require()` for node modules which we inevitably
- * need would be very nice.
- * 
- * We use browserify to bundle node_modules into this script and provide a
- * custom `require()` function, which returns a reference to modules. 
- * Obviously, this does not provide script-wise encapsulation and closures
- * should be used to prevent from trashing the global scope.
- */
-
-(function() {
-
-window.require = function(module) {
-	if (__nodeModules[module]) {
-		return __nodeModules[module];
-	}
-	throw new Error('The required module does not exist');
+MESSAGES.Background = {
+	run: true
 }
-
-var __nodeModules = {
-	url: require('url')
-};
-
-})();

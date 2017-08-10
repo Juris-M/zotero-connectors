@@ -69,7 +69,12 @@ var Zotero = new function() {
 		this.version = safari.extension.bundleVersion;
 	}
 	
-	this.Promise = window.Promise;
+	// window.Promise and Promise differ (somehow) in Firefox and when certain
+	// async promise resolution conditions arise upon calling Zotero.Promise.all().then(result => )
+	// somehow the result array doesn't properly have result[1] bound, even though
+	// Array.from(result)[1] is there. Magic of code.
+	// this.Promise = window.Promise;
+	this.Promise = Promise;
 	
 	/**
 	 * Initializes Zotero services for the global page in Chrome or Safari
@@ -95,12 +100,17 @@ var Zotero = new function() {
 			// IE and the likes? Who knows
 			this.platform = 'win';
 		}
-		
-		
-		Zotero.Debug.init();
-		Zotero.Messaging.init();
-		Zotero.Connector_Types.init();
-		Zotero.Repo.init();
+
+		return Zotero.Prefs.init().then(function() {
+			Zotero.Debug.init();
+			Zotero.Messaging.init();
+			Zotero.Connector_Types.init();
+			Zotero.Repo.init();
+			if (Zotero.isBrowserExt) {
+				Zotero.WebRequestIntercept.init();
+				Zotero.Proxies.init();
+			}
+		});
 	};
 	
 	/**
@@ -108,9 +118,13 @@ var Zotero = new function() {
 	 */
 	this.initInject = function() {
 		Zotero.isInject = true;
-		Zotero.Debug.init();
 		Zotero.Messaging.init();
 		Zotero.Connector_Types.init();
+		Zotero.Prefs.loadNamespace(['translators.', 'downloadAssociatedFiles', 'automaticSnapshots',
+			'reportTranslationFailure', 'capitalizeTitles']);
+		return Zotero.Prefs.loadNamespace('debug').then(function() {
+			Zotero.Debug.init();
+		});
 	};
 	
 	
@@ -200,7 +214,7 @@ Zotero.Prefs = new function() {
 		"debug.level": 5,
 		"debug.time": false,
 		"downloadAssociatedFiles": true,
-		"automaticSnapshots": true,
+		"automaticSnapshots": true, // only affects saves to zotero.org. saves to client governed by pref in the client
 		"connector.repo.lastCheck.localTime": 0,
 		"connector.repo.lastCheck.repoTime": 0,
 		"connector.url": ZOTERO_CONFIG.CONNECTOR_SERVER_URL,
@@ -210,33 +224,42 @@ Zotero.Prefs = new function() {
 		"firstUse": true,
 		"firstSaveToServer": true,
 		"reportTranslationFailure": true,
+		"translatorMetadata": [],
 		
 		"proxies.transparent": true,
 		"proxies.autoRecognize": true,
 		"proxies.showRedirectNotification": true,
 		"proxies.disableByDomain": false,
 		"proxies.disableByDomainString": '.edu',
-		"proxies.proxies": []
+		"proxies.proxies": [],
+		"proxies.clientChecked": false,
 	};
 	
+	this.syncStorage = {};
+
+	/**
+	 * Should override per browser and load data into this.syncStorage
+	 */
+	this.init = function() {throw new Error("Prefs initialization not overriden");};
 	
 	this.get = function(pref) {
 		try {
-			if("pref-"+pref in localStorage) return JSON.parse(localStorage["pref-"+pref]);
-		} catch(e) {}
-		if (DEFAULTS.hasOwnProperty(pref)) return DEFAULTS[pref];
-		throw "Zotero.Prefs: Invalid preference "+pref;
+			if (!(pref in this.syncStorage)) throw new Error(`Prefs.get: ${pref} not preloaded`);
+			return this.syncStorage[pref];
+		} catch (e) {
+			if (DEFAULTS.hasOwnProperty(pref)) return DEFAULTS[pref];
+			if (Zotero.isBackground) {
+				throw new Error("Zotero.Prefs: Invalid preference "+pref);
+			} else {
+				throw e;
+			}
+		}
 	};
 	
 	this.getAll = function() {
-		let prefs = Object.assign({}, localStorage);
-		for (let k of Object.keys(prefs)) {
-			if (k.substr(0, 'pref-'.length) == 'pref-') {
-				prefs[k.substr('pref-'.length)] = prefs[k];
-			}
-			delete prefs[k];
-		}
-		return Zotero.Promise.resolve(Object.assign({}, DEFAULTS, prefs));
+		let prefs = Object.assign({}, DEFAULTS, this.syncStorage);
+		delete prefs['translatorMetadata'];
+		return Zotero.Promise.resolve(prefs);
 	};
 	
 	this.getAsync = function(pref) {
@@ -256,9 +279,41 @@ Zotero.Prefs = new function() {
 			}
 		});
 	};
-	
+
+	/**
+	 * Pre-load a namespace of prefs that can then be accessed synchronously.
+	 * Only needed in injected code
+	 *
+	 * @param namespace {String|String[]}
+	 */
+	this.loadNamespace = function(namespaces) {
+		if (Zotero.isBackground) throw new Error('trying to load namespace in background. all prefs are available via the sync API');
+		if (! Array.isArray(namespaces)) namespaces = [namespaces];
+		return this.getAll().then(function(prefs) {
+			let keys = Object.keys(prefs);
+			for (let namespace of namespaces) {
+				keys.filter((key) => key.indexOf(namespace) === 0)
+					.forEach((key) => this.syncStorage[key] = prefs[key]);
+			}
+		}.bind(this));
+	};
+
+	/**
+	 * Should override per browser
+	 * @param pref
+	 * @param value
+	 */
 	this.set = function(pref, value) {
 		Zotero.debug("Setting "+pref+" to "+JSON.stringify(value));
-		localStorage["pref-"+pref] = JSON.stringify(value);
+		this.syncStorage[pref] = value;
 	};
+
+	/**
+	 * Should override per browser
+	 * @param pref
+	 */
+	this.clear = function(pref) {
+		if (Array.isArray(pref)) return pref.forEach((p) => this.clear(p));
+		delete this.syncStorage[pref];
+	}
 }

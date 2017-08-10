@@ -175,6 +175,9 @@ Zotero.ProgressWindow = new function() {
 					"is not supported by any Zotero translator. If Zotero is not open, try "+
 					"opening it to increase the number of supported sites.");
 			this._div.appendChild(textNode);
+		} else if (err === "collectionNotEditable") {
+			this._div.appendChild(doc.createTextNode("The currently selected collection is not editable. "+
+				"Please select a different collection in Zotero."));
 		} else if (err === "clientRequired") {
 			this._div.appendChild(doc.createTextNode("This item could not be saved because Zotero "+
 				"is not open or is unreachable. Please open Zotero and try again."));
@@ -204,8 +207,9 @@ Zotero.ProgressWindow = new function() {
 	 * Initializes and shows the progress div
 	 */
 	this.show = function() {
-		if(container) return;
+		if (container) return;
 		container = doc.createElement('div');
+		container.id = 'zotero-progress-window';
 		container.style.cssText = cssDivClearString;
 		for(var i in cssBox) container.style[i] = cssBox[i];
 		

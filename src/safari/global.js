@@ -73,9 +73,11 @@ Zotero.Connector_Browser = new function() {
 	 * Called to display select items dialog
 	 */
 	this.onSelect = function(items, callback, tab) {
+		var deferred = Zotero.Promise.defer();
 		var newTab = safari.application.openBrowserWindow().activeTab;
 		newTab.url = safari.extension.baseURI+"itemSelector/itemSelector.html#"+encodeURIComponent(JSON.stringify([tab.id, items]));
-		_selectCallbacksForTabIDs[tab.id] = callback;
+		_selectCallbacksForTabIDs[tab.id] = deferred.resolve;
+		return deferred.promise;
 	}
 	
 	/**
@@ -96,7 +98,9 @@ Zotero.Connector_Browser = new function() {
 			if(tab.translators && tab.translators.length) {
 				Zotero.Connector_Browser.saveWithTranslator(0);
 			} else {
-				Zotero.Connector_Browser.saveAsWebpage(true);
+				var withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
+					Zotero.Prefs.get('automaticSnapshots');
+				Zotero.Connector_Browser.saveAsWebpage(withSnapshot);
 			}
 		} else if (command === "zotero-preferences") {
 			Zotero.Connector_Browser.openTab(safari.extension.baseURI+"preferences/preferences.html");
@@ -198,7 +202,7 @@ Zotero.Connector_Browser = new function() {
 	
 	function _showZoteroStatus() {
 		_zoteroButton.disabled = true;
-		Zotero.Connector.checkIsOnline(function(isOnline) {
+		Zotero.Connector.checkIsOnline().then(function(isOnline) {
 			if (isOnline) {
 				_zoteroButton.image = safari.extension.baseURI+"images/toolbar/zotero-new-z-16px.png";
 				_zoteroButton.toolTip = "Zotero is Online";
@@ -219,11 +223,17 @@ Zotero.Connector_Browser = new function() {
 
 	function _showWebpageIcon() {
 		_zoteroButton.image = Zotero.ItemTypes.getImageSrc("webpage-gray").replace('images/', 'images/toolbar/');
-		_zoteroButton.toolTip = "Save to Zotero (Web Page with Snapshot)";
+		var withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
+			Zotero.Prefs.get('automaticSnapshots');
+		if (withSnapshot) {
+			_zoteroButton.toolTip = "Save to Zotero (Web Page with Snapshot)";
+		} else {
+			_zoteroButton.toolTip = "Save to Zotero (Web Page without Snapshot)";
+		}
 	}
 
 	function _showPDFIcon() {
-		_zoteroButton.image = Zotero.ItemTypes.getImageSrc("webpage-gray").replace('images/', 'images/toolbar/');
+		_zoteroButton.image = safari.extension.baseURI + "images/toolbar/pdf.png";
 		_zoteroButton.toolTip = "Save to Zotero (PDF)";
 	}
 

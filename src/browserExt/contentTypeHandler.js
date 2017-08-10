@@ -70,42 +70,51 @@ Zotero.ContentTypeHandler = {
 		let URI = url.parse(details.url);
 		let contentType = details.responseHeadersObject['content-type'].split(';')[0];
 		if (Zotero.ContentTypeHandler.cslContentTypes.has(contentType)) {
-			Zotero.ContentTypeHandler.confirm(details, `Add citation style to Zotero?`)
-				.then(function(response) {
-					if (response.button == 1) {
-						Zotero.debug(`ContentTypeHandler: Importing style ${details.url}`);
-						Zotero.ContentTypeHandler.importFile(details, 'csl');
-					}
-				}
-			);
-			// Don't continue until we get confirmation
-			return {redirectUrl: 'javascript:'};
+			return this.handleStyle(details);
 		} else if (Zotero.Prefs.get('interceptKnownFileTypes') && 
-			Zotero.ContentTypeHandler.importContentTypes.has(contentType)) {
-			
-			let hosts = Zotero.Prefs.get('allowedInterceptHosts');
-			let isEnabledHost = hosts.indexOf(URI.host) != -1;
-			if (isEnabledHost) {
-				Zotero.debug(`ContentTypeHandler: Importing a file ${details.url}`);
-				Zotero.ContentTypeHandler.importFile(details, 'import');
-			} else {
-				Zotero.ContentTypeHandler.confirm(details, `Import items from ${URI.host} into Zotero?<br/><br/>` +
-					'You can manage automatic file importing in Juris-M Connector preferences.',
-					'Always allow for this site').then(function(response) {
-					if (response.button == 1) {
-						Zotero.debug(`ContentTypeHandler: Importing a file ${details.url}`);
-						Zotero.ContentTypeHandler.importFile(details, 'import');
-						if (!isEnabledHost && response.checkboxChecked) {
-							hosts.push(URI.host);
-						}
-						Zotero.Prefs.set('allowedInterceptHosts', hosts);
-					}
-				});
-			}
-			return {redirectUrl: 'javascript:'};
+				Zotero.ContentTypeHandler.importContentTypes.has(contentType)) {
+			return this.handleImportContent(details);
+		} else if (contentType == 'application/pdf') {
+			setTimeout(() => Zotero.Connector_Browser.onPDFFrame(details.url, details.frameId, details.tabId));
 		}
 	},
-
+	
+	handleStyle: function(details) {
+		Zotero.ContentTypeHandler.confirm(details, `Add citation style to Zotero?`)
+			.then(function(response) {
+				if (response.button == 1) {
+					Zotero.debug(`ContentTypeHandler: Importing style ${details.url}`);
+					Zotero.ContentTypeHandler.importFile(details, 'csl');
+				}
+			}
+		);
+		// Don't continue until we get confirmation
+		return {redirectUrl: 'javascript:'};	
+	},
+	
+	handleImportContent: function(details) {
+		let hosts = Zotero.Prefs.get('allowedInterceptHosts');
+		let isEnabledHost = hosts.indexOf(URI.host) != -1;
+		if (isEnabledHost) {
+			Zotero.debug(`ContentTypeHandler: Importing a file ${details.url}`);
+			Zotero.ContentTypeHandler.importFile(details, 'import');
+		} else {
+			Zotero.ContentTypeHandler.confirm(details, `Import items from ${URI.host} into Zotero?<br/><br/>` +
+				'You can manage automatic file importing in Zotero Connector preferences.',
+				'Always allow for this site').then(function(response) {
+				if (response.button == 1) {
+					Zotero.debug(`ContentTypeHandler: Importing a file ${details.url}`);
+					Zotero.ContentTypeHandler.importFile(details, 'import');
+					if (!isEnabledHost && response.checkboxChecked) {
+						hosts.push(URI.host);
+					}
+					Zotero.Prefs.set('allowedInterceptHosts', hosts);
+				}
+			});
+		}
+		return {redirectUrl: 'javascript:'};	
+	},
+	
 	/**
 	 * Handle confirmation prompt by sending a message to injected script and
 	 * redirect to the URL if they click cancel
@@ -170,30 +179,22 @@ Zotero.ContentTypeHandler = {
 					if (type == 'csl') {
 						options.method = 'installStyle';
 						options.queryString = 'origin=' + encodeURIComponent(details.url);
-						Zotero.Connector.callMethod(options, this.response, function(result, status, response) {
-							if (result) {
-								Zotero.Messaging.sendMessage('progressWindow.itemProgress',
-									[chrome.extension.getURL('images/csl-style.png'), result.name, null, 100], tab);
-							} else if (status == 404) {
+						return Zotero.Connector.callMethod(options, this.response).then(function(result) {
+							Zotero.Messaging.sendMessage('progressWindow.itemProgress',
+								[chrome.extension.getURL('images/csl-style.png'), result.name, null, 100], tab);
+							return Zotero.Messaging.sendMessage('progressWindow.done', [true], tab);
+						}, function(e) {
+							if (e.status == 404) {
 								return Zotero.Messaging.sendMessage('progressWindow.done',
 									[false, 'upgradeClient'], tab);
 							} else {
 								return Zotero.Messaging.sendMessage('progressWindow.done',
 									[false, 'clientRequired'], tab);
 							}
-							Zotero.Messaging.sendMessage('progressWindow.done', [true], tab);
 						});
 					} else {
 						options.method = 'import';
-						Zotero.Connector.callMethod(options, this.response, function(result, status) {
-							if (status == 404) {
-								return Zotero.Messaging.sendMessage('progressWindow.done',
-									[false, 'upgradeClient'], tab);
-							}
-							if (status < 200 || status > 400) {
-								return Zotero.Messaging.sendMessage('progressWindow.done',
-									[false, 'clientRequired'], tab);
-							}
+						return Zotero.Connector.callMethod(options, this.response).then(function(result) {
 							Zotero.Messaging.sendMessage('progressWindow.show', 
 								`Imported ${result.length} item` + (result.length > 1 ? 's' : ''), tab);
 							for (let i = 0; i < result.length && i < 20; i++) {
@@ -202,6 +203,15 @@ Zotero.ContentTypeHandler = {
 									[Zotero.ItemTypes.getImageSrc(item.itemType), item.title, null, 100], tab);
 							}
 							Zotero.Messaging.sendMessage('progressWindow.done', [true], tab);
+						}, function(e) {
+							if (e.status == 404) {
+								return Zotero.Messaging.sendMessage('progressWindow.done',
+									[false, 'upgradeClient'], tab);
+							}
+							else if (e.status < 200 || status >= 400) {
+								return Zotero.Messaging.sendMessage('progressWindow.done',
+									[false, 'clientRequired'], tab);
+							}
 						});
 					}
 				};

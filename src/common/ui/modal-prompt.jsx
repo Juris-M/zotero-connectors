@@ -233,8 +233,21 @@ Zotero.ui.ModalPrompt = React.createClass({
 				lineHeight: '1.5',
 				fontSize: "16px", fontFamily: "Helvetica, Geneva, sans-serif"
 			}}>
-				<h2 style={{color: 'inherit', margin: "0 0 1em 0"}} className="z-popup-title">{this.props.title}</h2>
-				<p style={{color: 'inherit', margin: "0 0 1em 0"}} className="z-popup-body">{message}</p>
+				<h2 className="z-popup-title" style={{
+					color: 'inherit',
+					margin: "0 0 1em 0",
+					fontSize: "1.5em",
+					fontWeight: "bold"
+				}}>
+					{this.props.title}
+				</h2>
+				<p className="z-popup-body" style={{
+					color: 'inherit',
+					fontWeight: 'initial',
+					margin: "0 0 1em 0"
+				}}>
+					{message}
+				</p>
 				{checkbox}
 				{input}
 				<div className="z-popup-buttons" style={{
@@ -253,3 +266,12 @@ Zotero.ui.ModalPrompt = React.createClass({
 		</div>)
 	}
 });
+
+var style = document.createElement('style');
+style.type = 'text/css';
+style.innerHTML = `
+.z-popup a { color: #38c; text-decoration: underline; }
+.z-popup a:visited { color: #38c; }
+.z-popup a:hover { color: #369; }
+`;
+document.getElementsByTagName('head')[0].appendChild(style);

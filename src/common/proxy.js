@@ -71,7 +71,10 @@ Zotero.Proxies = new function() {
 			}
 			return proxy;
 		});
-
+		
+		if (this.transparent) {
+			Zotero.Proxies.loadFromClient();
+		}
 	};
 	
 	this.loadPrefs = function() {
@@ -119,6 +122,33 @@ Zotero.Proxies = new function() {
 		}
 	};
 	
+	this.loadFromClient = function() {
+		if (Zotero.Prefs.get('proxies.clientChecked')) return;
+		return Zotero.Connector.callMethod('proxies', null).then(function(result) {
+			for (let proxy of result) {
+				let existingProxy;
+				for (let p of Zotero.Proxies.proxies) {
+					if (proxy.scheme == p.scheme) {
+						existingProxy = p;
+						break;
+					}
+				}
+				if (existingProxy) {
+					// Copy hosts from the client if proxy already exists
+					existingProxy.hosts.push.apply(existingProxy.hosts, proxy.hosts);
+					existingProxy.hosts = Array.from(new Set(existingProxy.hosts));
+				} else {
+					// Otherwise add the proxy
+					Zotero.Proxies.proxies.push(new Zotero.Proxy(proxy));
+				}
+			}
+			Zotero.Proxies.storeProxies();
+
+			Zotero.Prefs.set('proxies.clientChecked', true);
+			return result;
+		}, () => 0);
+	}
+	
 
 	/**
 	 * Observe method to capture and redirect page loads if they're going through an existing proxy.
@@ -150,7 +180,7 @@ Zotero.Proxies = new function() {
 				if (response == 2) {
 					return Zotero.Messaging.sendMessage('confirm', {
 						title: 'Only add proxies linked from your library, school, or corporate website',
-						message: 'Adding other proxies allows malicious sites to masquarade as sites you trust.<br/></br>'
+						message: 'Adding other proxies allows malicious sites to masquerade as sites you trust.<br/></br>'
 							+ 'Adding this proxy will allow Zotero to recognize items from proxied pages and will automatically '
 							+ `redirect future requests to ${proxy.hosts[proxy.hosts.length-1]} through ${proxiedHost}.`,
 						button1Text: 'Add Proxy',
@@ -670,12 +700,11 @@ Zotero.Proxy.prototype.toProper = function(m) {
 	
 	// Replace `-` with `.` in https to support EZProxy HttpsHyphens.
 	// Potentially troublesome with domains that contain dashes
-	if (this.dotsToHyphens || (this.dotsToHyphens == undefined) && scheme == "https://") {
+	if (this.dotsToHyphens ||
+		(this.dotsToHyphens == undefined && scheme == "https://") ||
+		!properURL.includes('.')) {
 		properURL = properURL.replace(/-/g, '.');
 	}
-	
-	// Replace 
-	properURL.replace(/-/g, '.');
 
 	if (this.indices["%p"]) {
 		properURL += m[this.parameters.indexOf("%p")+1];
@@ -910,17 +939,10 @@ Zotero.Proxies.Detectors.Juniper = function(details) {
 
 Zotero.Proxies.DNS = new function() {
 	this.getHostnames = function() {
-		var deferred = Zotero.Promise.defer();
-
-		Zotero.Connector.callMethod('getClientHostnames', null, function(hostnames, status) {
-			if (status !== 200) {
-				deferred.reject(status);
-			} else {
-				Zotero.Proxies._clientHostnames = hostnames;
-				deferred.resolve(hostnames);
-			}
+		return Zotero.Connector.callMethod('getClientHostnames', null).then(function(hostnames) {
+			Zotero.Proxies._clientHostnames = hostnames;
+			return hostnames;
 		});
-		return deferred.promise;
 	}
 };
 

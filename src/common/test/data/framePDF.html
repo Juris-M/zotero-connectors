@@ -1,7 +1,8 @@
-/*
+<!DOCTYPE html>
+<!--
     ***** BEGIN LICENSE BLOCK *****
     
-    Copyright © 2009 Center for History and New Media
+    Copyright © 2017 Center for History and New Media
                      George Mason University, Fairfax, Virginia, USA
                      http://zotero.org
     
@@ -21,30 +22,13 @@
     along with Zotero.  If not, see <http://www.gnu.org/licenses/>.
     
     ***** END LICENSE BLOCK *****
-*/
-
-MESSAGES.TranslatorTester = {
-	onLoad: {
-		response: true,
-		background: {
-			preSend: function(data) {
-				if (data) {
-					data[0] = Zotero.Translators.serialize(data[0], TRANSLATOR_PASSING_PROPERTIES)
-				}
-				return [data];
-			},
-		},
-		inject: {
-			postReceive: function(data) {
-				if (data) {
-					data[0] = new Zotero.Translator(data[0]);
-				}
-				return [data];
-			}
-		}
-	},
-	debug: false,
-	runTests: false,
-	testComplete: false,
-	runAutomatedTesting: false
-};
+-->
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Frame PDF</title>
+</head>
+<body>
+<iframe src="http://zotero-static.s3.amazonaws.com/test.pdf"></iframe>
+</body>
+</html>
