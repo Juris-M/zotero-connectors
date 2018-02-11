@@ -13,14 +13,6 @@
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
     
-    Zotero is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-    
-    You should have received a copy of the GNU Affero General Public License
-    along with Zotero.  If not, see <http://www.gnu.org/licenses/>.
-    
     ***** END LICENSE BLOCK *****
 -->
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
@@ -36,7 +28,7 @@
 				<div class="pane-image"><img src="../images/prefs-general.png" alt=""/></div>
 				<a href="#general" class="pane-label">General</a>
 			</div>
-			<div id="pane-proxies" class="pane" style="display: none">
+			<div id="pane-proxies" class="pane">
 				<div class="pane-image"><img src="../images/prefs-proxies.png" alt=""/></div>
 				<a href="#proxies" class="pane-label">Proxies</a>
 			</div>
@@ -117,15 +109,27 @@
 				<div class="group-content">
 					<p><label><input type="checkbox" id="advanced-checkbox-report-translator-failure"/> Report broken site translators to zotero.org</label></p>
 					<p>
-						<input type="button" id="advanced-button-update-translators" value="Update Translators" id="updateTranslators"/>
-						<input type="button" id="advanced-button-reset-translators" value="Reset Translators" id="resetTranslators"/>
+						<input type="button" id="advanced-button-update-translators" value="Update Translators"/>
+						<input type="button" id="advanced-button-reset-translators" value="Reset Translators"/>
 						<!--BEGIN DEBUG-->
 						<input type="button" id="advanced-button-open-translator-tester" value="Open Translator Tester"/>
 						<!--END DEBUG-->
 					</p>
 				</div>
 			</div>
+			<div class="group" id="advanced-group-config-editor">
+				<div class="group-title">Advanced Configuration</div>
+				<div class="group-content">
+					<p>
+						<input type="button" id="advanced-button-config-editor" value="Config Editor"/>
+						<!--BEGIN DEBUG-->
+						<input type="button" id="advanced-button-open-test-runner" value="Open Integration Test Runner"/>
+						<!--END DEBUG-->
+					</p>
+				</div>
+			</div>
 		</div>
+		<script type="text/javascript" src="../browser-polyfill.js"></script>
 		<script type="text/javascript" src="../lib/react.js"></script>
 		<script type="text/javascript" src="../lib/react-dom.js"></script>
 		<script type="text/javascript" src="../zotero_config.js"></script>

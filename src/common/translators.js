@@ -35,7 +35,8 @@ var TRANSLATOR_CACHING_PROPERTIES = TRANSLATOR_REQUIRED_PROPERTIES.concat(["brow
 Zotero.Translators = new function() {
 	var _cache, _translators;
 	var _initialized = false;
-	var _fullFrameDetectionWhitelist = ['resolver.ebscohost.com', 'classics.uc.edu/nestor'];
+	var _fullFrameDetectionWhitelist = ['resolver.ebscohost.com'];
+	var _resetAttempted = false;
 	
 	/**
 	 * Initializes translator cache, loading all relevant translators into memory
@@ -76,6 +77,17 @@ Zotero.Translators = new function() {
 					Zotero.logError("Could not load translator "+JSON.stringify(translators[i]));
 				} catch(e) {}
 			}
+		}
+		
+		// Huge number of translator metadata missing. Attempt to reset.
+		// NOTE: If the number of translators significantly decreases (currently at 450ish)
+		// then this will trigger on every translator init.
+		if (Object.keys(_translators).length < 400 && !_resetAttempted) {
+			_resetAttempted = true;
+			Zotero.logError(new Error(`Only ${Object.keys(_translators).length} translators present in cache. Resetting`));
+			Zotero.Prefs.clear("connector.repo.lastCheck.repoTime");
+			Zotero.Prefs.clear("connector.repo.lastCheck.localTime");
+			return Zotero.Repo.init();
 		}
 		
 		// Sort by priority
@@ -144,12 +156,18 @@ Zotero.Translators = new function() {
 	 * @return {Promise<Array[]>} - A promise for a 2-item array containing an array of translators and
 	 *     an array of functions for converting URLs from proper to proxied forms
 	 */
-	this.getWebTranslatorsForLocation = Zotero.Promise.method(function (URI, rootURI) {
-		// Hopefully a temporary hard-coded list
-		for (let str of _fullFrameDetectionWhitelist) {
-			if (URI.includes(str)) {
-				rootURI = URI;
-				break;
+	this.getWebTranslatorsForLocation = Zotero.Promise.method(function (URI, rootURI, callback) {
+		if (callback) {
+			// If callback is present then this call is coming from an injected frame,
+			// so we may as well treat it as if it's a root-frame
+			rootURI = URI;
+		} else {
+			// Hopefully a temporary hard-coded list
+			for (let str of _fullFrameDetectionWhitelist) {
+				if (URI.includes(str)) {
+					rootURI = URI;
+					break;
+				}
 			}
 		}
 		var isFrame = URI !== rootURI;
@@ -325,7 +343,7 @@ Zotero.Translators.CodeGetter.prototype.getCodeFor = Zotero.Promise.method(funct
 	if (translator.runMode === Zotero.Translator.RUN_MODE_IN_BROWSER
 			// or if in debug mode and the code we have came from the repo (which doesn't
 			// include test cases)
-			|| (this._debugMode && translator.codeSource === Zotero.Repo.SOURCE_REPO)) {
+			|| (this._debugMode && Zotero.Repo && translator.codeSource === Zotero.Repo.SOURCE_REPO)) {
 		// get code
 		return translator.getCode().catch((e) => Zotero.debug(`Failed to retrieve code for ${translator.translatorID}`));
 	}

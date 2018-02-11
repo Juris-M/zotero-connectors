@@ -27,7 +27,7 @@ describe('Preferences', function() {
 	var tab = new Tab();
 	
 	before(Promise.coroutine(function* () {
-		yield tab.init(chrome.extension.getURL('preferences/preferences.html'));
+		yield tab.init(getExtensionURL('preferences/preferences.html'));
 		if (Zotero.isFirefox) {
 			// Firefox is just very slow
 			yield Promise.delay(200);
@@ -142,7 +142,7 @@ describe('Preferences', function() {
 				
 				assert.include(message, `D${debugId}`);
 				var debugLogBody = yield background(function() {
-					return Zotero.HTTP.request.firstCall.args[2].body;
+					return Zotero.HTTP.request.lastCall.args[2].body;
 				});
 				assert.include(debugLogBody, testDebugLine);
 			} finally {

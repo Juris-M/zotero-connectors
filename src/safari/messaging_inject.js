@@ -35,7 +35,7 @@ Zotero.Messaging = new function() {
 	 * Add a message listener
 	 */
 	this.addMessageListener = function(messageName, callback) {
-		_messageListeners[messageName] = callback;
+		_messageListeners[messageName] = Zotero.Promise.method(callback);
 	}
 	
 	/**
@@ -83,10 +83,10 @@ Zotero.Messaging = new function() {
 									}
 									try {
 										if (messageConfig.inject && messageConfig.inject.postReceive) {
-											response = messageConfig.inject.postReceive.apply(null, response);
+											response = messageConfig.inject.postReceive(response);
 										}
-										if (callbackArg !== null) callback.apply(null, response);
-										resolve.apply(null, response);
+										if (callbackArg !== null) callback(response);
+										resolve(response);
 									} catch (e) {
 										Zotero.logError(e);
 										reject(e);
@@ -104,13 +104,24 @@ Zotero.Messaging = new function() {
 		}
 		
 		// in Safari, our listener must also handle responses
-		safari.self.addEventListener("message", function(event) {
+		safari.self.addEventListener("message", async function(event) {
 			try {
-				//Zotero.debug("Received message "+event.name);
-				
-				// first see if there is a message listener
-				if(_messageListeners[event.name]) {
-					_messageListeners[event.name](event.message);
+				// see if there is a message listener
+				if (event.name == 'sendMessage' && event.message[0] in _messageListeners) {
+					Zotero.debug(event.message[0] + " message received in injected page " + window.location.href);
+					let [message, messageId, payload] = event.message;
+					try {
+						var result = await _messageListeners[message](payload);
+					} catch (err) {
+						Zotero.logError(err);
+						err = JSON.stringify(Object.assign({
+							name: err.name,
+							message: err.message,
+							stack: err.stack
+						}, err));
+						result = ['error', err];
+					}
+					safari.self.tab.dispatchMessage('response', [messageId, result]);
 					return;
 				}
 				

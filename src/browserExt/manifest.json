@@ -13,12 +13,20 @@
 	},
 	"permissions": ["http://*/*", "https://*/*", "tabs", "contextMenus", "cookies", 
 		"webRequest", "webRequestBlocking", "webNavigation", "storage"],
+	"optional_permissions": ["management"],
 	"background": {
 		"scripts": [
 			/*BACKGROUND SCRIPTS*/,
 			"background.js"
 		]
 	},
+	"content_scripts": [
+		{
+			"matches": ["http://*/*", "https://*/*"],
+			"run_at": "document_start",
+			"js": [/*INJECT SCRIPTS*/]
+		}
+	],
 	"web_accessible_resources": [
 		"images/*",
 		"test/data/journalArticle-single.html"
@@ -46,7 +54,7 @@
 	"applications": {
 		"gecko": {
 			"id": "juris-m@juris-m.github.io",
-			"update_url": "https://www.zotero.org/download/connector/firefox/updates.json",
+			"update_url": "https://our.law.nagoya-u.ac.jp/AUTOFILLED",
 			"strict_min_version": "51.0"
 		}
 	}

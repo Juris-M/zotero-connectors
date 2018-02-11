@@ -43,7 +43,15 @@ describe('TestSetup', function() {
 				return;
 			}
 			throw new Error('Error not thrown');
-		}));	
+		}));
+		it('throws an error when the passed function returns a rejected promise', Promise.coroutine(function *() {
+			try {
+				yield executor(function() {return Promise.reject(new Error('test'))})
+			} catch (e) {
+				return;
+			}
+			throw new Error('Error not thrown');
+		}));
 	}
 
 	describe('#background()', function() {
@@ -58,15 +66,17 @@ describe('TestSetup', function() {
 		
 		describe('#init()', function() {
 			it('opens a new tab with the specified url', Promise.coroutine(function * () {
-				let url = 'http://www.example.com/';
+				let url = 'http://zotero-static.s3.amazonaws.com/test.html';
 				yield tab.init(url);
 				assert.isOk(tab.tabId);
 				
-				let tabUrl = yield new Promise(function(resolve) {
-					chrome.tabs.get(tab.tabId, function(tab) {
-						resolve(tab.url);
-					});
-				});
+				if (Zotero.isBrowserExt) {
+					var tabUrl = yield browser.tabs.get(tab.tabId).then(tab => tab.url);
+				} else {
+					tabUrl = yield background(async function(id) {
+						return (await Zotero.Background.getTabByID(id)).url
+					}, tab.tabId);
+				}
 				assert.equal(tabUrl, url);
 			}));
 		});
@@ -82,8 +92,15 @@ describe('TestSetup', function() {
 			it('closes the tab', Promise.coroutine(function* () {
 				let tabId = tab.tabId;
 				yield tab.close();
-				let closedTab = yield new Promise((resolve) => chrome.tabs.get(tabId, resolve));
-				assert.isNotOk(closedTab);
+				// Sometimes takes a bit for the browser to garbage collect the tab
+				yield Zotero.Promise.delay(100);
+				let closedTab;
+				try {
+					closedTab = yield background(async function(id) {
+						return !!(await Zotero.Background.getTabByID(id))
+					}, tabId);
+				} catch (e) {return}
+				assert.isNotOk(closedTab, 'Tab was not closed')
 			}));
 		})
 	});

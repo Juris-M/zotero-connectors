@@ -45,35 +45,39 @@ function explorerify {
 
 function usage {
 	cat >&2 <<DONE
-Usage: $0 [-v VERSION] [-d]
+Usage: $0 [-p PLATFORMS] [-v VERSION] [-d]
 Options
+ -p PLATFORMS        platform(s) (b=browserExt, s=safari, k=bookmarklet; defaults to all)
  -v VERSION          use version VERSION
- -b                  build bookmarklet
  -d                  build for debugging (enable translator tester, don't minify)
 DONE
 	exit 1
 }
 
-if [[ ! -z "$TEST_CHROME" ]] || [[ ! -z "$TEST_FX" ]]; then
-	BUILD_BROWSER_EXT=1
-elif [[ ! -z $TEST_SAFARI ]]; then
-	BUILD_SAFARI=1
-else
-	BUILD_BROWSER_EXT=1
-	BUILD_SAFARI=1
-fi
-
+BUILD_BROWSER_EXT=0
+BUILD_SAFARI=0
 BUILD_BOOKMARKLET=0
-while getopts "hv:bd" opt; do
+while getopts "hp:v:d" opt; do
 	case $opt in
 		h)
 			usage
 			;;
+		p)
+			for i in `seq 0 1 $((${#OPTARG}-1))`
+			do
+				case ${OPTARG:i:1} in
+					b) BUILD_BROWSER_EXT=1;;
+					s) BUILD_SAFARI=1;;
+					k) BUILD_BOOKMARKLET=1;;
+					*)
+						echo "$0: Invalid platform option ${OPTARG:i:1}"
+						usage
+						;;
+				esac
+			done
+			;;
 		v)
 			VERSION="$OPTARG"
-			;;
-		b)
-			BUILD_BOOKMARKLET=1
 			;;
 		d)
 			DEBUG=1
@@ -87,6 +91,17 @@ done
 
 if [ ! -z $1 ]; then
 	usage
+fi
+
+if [[ ! -z "$TEST_CHROME" ]] || [[ ! -z "$TEST_FX" ]]; then
+	BUILD_BROWSER_EXT=1
+elif [[ ! -z $TEST_SAFARI ]]; then
+	BUILD_SAFARI=1
+# Default to all builds if none specified
+elif [[ $BUILD_BROWSER_EXT -eq 0 ]] && [[ $BUILD_SAFARI -eq 0 ]] && [[ $BUILD_BOOKMARKLET -eq 0 ]]; then
+	BUILD_BROWSER_EXT=1
+	BUILD_SAFARI=1
+	BUILD_BOOKMARKLET=1
 fi
 
 if [ -z $VERSION ]; then
@@ -132,7 +147,7 @@ if [[ ! -z $DEBUG ]]; then
 fi
 
 # Scripts to be included in bookmarklet
-BOOKMARKLET_INJECT_INCLUDE=("$EXTENSION_XPCOM_DIR/connector/cachedTypes.js" \
+BOOKMARKLET_INJECT_INCLUDE=("$SRCDIR/common/cachedTypes.js" \
 	"$EXTENSION_XPCOM_DIR/date.js" \
 	"$SRCDIR/common/inject/http.js" \
 	"$EXTENSION_XPCOM_DIR/openurl.js" \
@@ -144,7 +159,7 @@ BOOKMARKLET_INJECT_INCLUDE=("$EXTENSION_XPCOM_DIR/connector/cachedTypes.js" \
 	"$EXTENSION_XPCOM_DIR/rdf/match.js" \
 	"$EXTENSION_XPCOM_DIR/rdf/rdfparser.js" \
 	"$EXTENSION_XPCOM_DIR/translation/translate.js" \
-	"$EXTENSION_XPCOM_DIR/connector/translate_item.js" \
+	"$SRCDIR/common/translate_item.js" \
 	"$SRCDIR/common/inject/translate_inject.js" \
 	"$SRCDIR/zotero/resource/schema/connectorTypeSchemaData.js" \
 	"$EXTENSION_XPCOM_DIR/dateparser.js" \
@@ -152,7 +167,7 @@ BOOKMARKLET_INJECT_INCLUDE=("$EXTENSION_XPCOM_DIR/connector/cachedTypes.js" \
 	"$SRCDIR/bookmarklet/messaging_inject.js" \
 	"$SRCDIR/bookmarklet/inject_base.js")
 
-BOOKMARKLET_IFRAME_INCLUDE=("$EXTENSION_XPCOM_DIR/connector/connector.js" \
+BOOKMARKLET_IFRAME_INCLUDE=("$SRCDIR/common/connector.js" \
 	"$EXTENSION_XPCOM_DIR/translation/tlds.js" \
 	"$SRCDIR/bookmarklet/translator.js" \
 	"$SRCDIR/common/messaging.js" \
@@ -318,13 +333,6 @@ if [[ $BUILD_BROWSER_EXT == 1 ]] || [[ $BUILD_SAFARI == 1 ]]; then
 	else
 		gulp process-custom-scripts --version "$VERSION" -p > "$LOG" 2>&1
 	fi
-fi
-
-if [[ $BUILD_SAFARI == 1 ]]; then
-	# Transpile Safari JS for Safari 10.0<
-	echo "Transpiling Safari JS..." >> "$LOG";
-	"$CWD/node_modules/babel-cli/bin/babel.js" "$BUILD_DIR/safari.safariextension/" --out-dir "$BUILD_DIR/safari.safariextension/" -q >> "$LOG" 2>&1
-	echo "Transpiled" >> "$LOG";
 fi
 
 echo "done"

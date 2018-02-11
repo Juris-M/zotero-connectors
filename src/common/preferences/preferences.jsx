@@ -68,12 +68,11 @@ var Zotero_Preferences = {
 		Zotero_Preferences.General.init();
 		Zotero_Preferences.Advanced.init();
 
-		if (Zotero.isBrowserExt) {
-			Zotero.Prefs.loadNamespace('proxies').then(function() {
-				Zotero_Preferences.Proxies.init();
-			});
-		}
-		
+		Zotero.Prefs.loadNamespace('proxies').then(function() {
+			Zotero_Preferences.Proxies.init();
+		});
+
+		Zotero.initDeferred.resolve();
 		Zotero_Preferences.refreshData();
 		window.setInterval(() => Zotero_Preferences.refreshData(), 1000);
 	},
@@ -143,8 +142,6 @@ Zotero_Preferences.General = {
 			function() { Zotero.Prefs.set('automaticSnapshots', this.checked) };
 		document.getElementById("general-checkbox-downloadAssociatedFiles").onchange =
 			function() { Zotero.Prefs.set('downloadAssociatedFiles', this.checked) };
-		var openTranslatorTesterButton = document.getElementById("advanced-button-open-translator-tester");
-		if (openTranslatorTesterButton) openTranslatorTesterButton.onclick = Zotero_Preferences.General.openTranslatorTester;
 		
 		Zotero.Prefs.getAsync("downloadAssociatedFiles").then(function(status) {
 			document.getElementById('general-checkbox-downloadAssociatedFiles').checked = !!status;
@@ -194,14 +191,13 @@ Zotero_Preferences.General = {
 		if(Zotero.isSafari) {
 			window.open(safari.extension.baseURI+"tools/testTranslators/testTranslators.html", "translatorTester");
 		} else if(Zotero.isBrowserExt) {
-			window.open(chrome.extension.getURL("tools/testTranslators/testTranslators.html"), "translatorTester");
+			window.open(browser.extension.getURL("tools/testTranslators/testTranslators.html"), "translatorTester");
 		}
 	}
 };
 
 Zotero_Preferences.Proxies = {
 	init: function() {
-		document.getElementById('pane-proxies').style.display = null;
 		this.proxiesComponent = React.createElement(Zotero_Preferences.Components.ProxySettings, null);
 		ReactDOM.render(this.proxiesComponent, document.getElementById('content-proxies'));
 	}
@@ -215,8 +211,13 @@ Zotero_Preferences.Advanced = {
 			function() { Zotero.Debug.setStore(this.checked); };
 		document.getElementById("advanced-checkbox-enable-at-startup").onchange =
 			function() { Zotero.Prefs.set('debug.store', this.checked); };
-		document.getElementById("advanced-checkbox-show-in-console").onchange =
-			function() { Zotero.Prefs.set('debug.log', this.checked); };
+		document.getElementById("advanced-checkbox-show-in-console").onchange = function() {
+			Zotero.Prefs.set('debug.log', this.checked);
+			Zotero.Debug.bgInit();
+			// Zotero.Debug.init() sets store to false
+			Zotero.Debug.setStore(document.getElementById("advanced-checkbox-enable-logging").checked);
+			Zotero.Prefs.set('debug.store', document.getElementById("advanced-checkbox-enable-at-startup").checked);
+		};
 		document.getElementById("advanced-checkbox-report-translator-failure").onchange =
 			function() { Zotero.Prefs.set('reportTranslationFailure', this.checked); };
 		document.getElementById("advanced-button-view-output").onclick = Zotero_Preferences.Advanced.viewDebugOutput;
@@ -226,6 +227,22 @@ Zotero_Preferences.Advanced = {
 		document.getElementById("advanced-button-reset-translators").onclick = function() { Zotero.Repo.update(true) };
 		document.getElementById("advanced-button-report-errors").onclick = Zotero_Preferences.Advanced.submitErrors;
 
+
+		var openTranslatorTesterButton = document.getElementById("advanced-button-open-translator-tester");
+		if (openTranslatorTesterButton) openTranslatorTesterButton.onclick = Zotero_Preferences.General.openTranslatorTester;
+		var testRunnerButton = document.getElementById("advanced-button-open-test-runner");
+		if (testRunnerButton) testRunnerButton.onclick = function() {
+			if (Zotero.isSafari) {
+				Zotero.Connector_Browser.openTab(safari.extension.baseURI + "test/test.html");
+			} else {
+				Zotero.Connector_Browser.openTab(browser.extension.getURL(`test/test.html`));
+			}
+		};
+		document.getElementById("advanced-button-config-editor").onclick = function() {
+			if (confirm("Changing these advanced settings can be harmful to the stability, security, and performance of the browser and the Zotero Connector. \nYou should only proceed if you are sure of what you are doing.")) {
+				Zotero.Connector_Browser.openConfigEditor();
+			}
+		};
 		
 		// get preference values
 		Zotero.Connector_Debug.storing(function(status) {
@@ -266,9 +283,18 @@ Zotero_Preferences.Advanced = {
 	/**
 	 * Submits debug output to server.
 	 */
-	submitDebugOutput: function() {
+	submitDebugOutput: async function() {
 		var submitOutputButton = document.getElementById('advanced-button-submit-output');
 		toggleDisabled(submitOutputButton, true);
+
+		// We have to request within a user gesture in chrome
+		if (Zotero.isChrome) {
+			try {
+				await browser.permissions.request({permissions: ['management']});
+			} catch (e) {
+				Zotero.debug(`Management permission request failed: ${e.message || e}`);
+			}
+		}
 		
 		return Zotero.Connector_Debug.submitReport().then(function(reportID) {
 			alert("Your debug output has been submitted.\n\n"
@@ -283,20 +309,32 @@ Zotero_Preferences.Advanced = {
 	/**
 	 * Submits an error report
 	 */
-	submitErrors: function() {
+	submitErrors: async function() {
 		var reportErrorsButton = document.getElementById('advanced-button-report-errors');
 		toggleDisabled(reportErrorsButton, true);
 		
-		return Zotero.Errors.sendErrorReport().then(function(reportID) {
+		// We have to request within a user gesture in chrome
+		if (Zotero.isChrome) {
+			try {
+				await browser.permissions.request({permissions: ['management']});
+			} catch (e) {
+				Zotero.debug(`Management permission request failed: ${e.message || e}`);
+			}
+		}
+		
+		try {
+			var reportID = await Zotero.Errors.sendErrorReport();
 			alert(`Your error report has been submitted.\n\nReport ID: ${reportID}\n\n`+
 				'Please post a message to the Zotero Forums (forums.zotero.org) with this Report '+
 				'ID, a description of the problem, and any steps necessary to reproduce it.\n\n'+
 				'Error reports are not reviewed unless referred to in the forums.');
-		}, function(e) {
+		} catch(e) {
 			alert(`An error occurred submitting your error report.\n\n${e.message}\n\n`+
 				'Please check your internet connection. If the problem persists, '+
 				'please post a message to the Zotero Forums (forums.zotero.org).');
-		}).then(() => toggleDisabled(reportErrorsButton, false));
+		} finally {
+			toggleDisabled(reportErrorsButton, false);
+		}
 	}
 };
 
@@ -359,12 +397,16 @@ Zotero_Preferences.Components.ProxyPreferences = React.createClass({
 	},
 	
 	render: function() {
+		let autoRecognise = '';
+		if (Zotero.isBrowserExt) {
+			autoRecognise = <span><label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="autoRecognize" defaultChecked={this.state.autoRecognize}/>&nbsp;Automatically detect new proxies</label><br/></span>;
+		}
 		return (
 			<div>
 				<label><input type="checkbox" name="transparent" onChange={this.handleCheckboxChange} defaultChecked={this.state.transparent}/>&nbsp;Enable proxy redirection</label><br/>
 				<div style={{marginLeft: "1em"}}>
-					<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="autoRecognize" defaultChecked={this.state.autoRecognize}/>&nbsp;Automatically detect new proxies</label><br/>
 					<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="showRedirectNotification" defaultChecked={this.state.showRedirectNotification}/>&nbsp;Show a notification when redirecting through a proxy</label><br/>
+					{autoRecognise}
 					<br/>
 					<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="disableByDomain" defaultChecked={this.state.disableByDomain}/>&nbsp;Disable proxy redirection when my domain name contains<span>*</span></label><br/>
 					<input style={{marginTop: "0.5em", marginLeft: "1.5em"}} type="text" onChange={this.handleTextInputChange} disabled={!this.state.transparent || !this.state.disableByDomain} name="disableByDomainString" defaultValue={this.state.disableByDomainString}/>
@@ -417,7 +459,7 @@ Zotero_Preferences.Components.Proxies = React.createClass({
 	handleProxyButtonClick: function(event) {
 		var currentProxyIdx = -1, currentHostIdx = -1;
 		if (event.target.value == '+') {
-			this.state.proxies.push({id: Date.now(), scheme: 'http://%h.example.com/%p', autoAssociate: true, 
+			this.state.proxies.push({id: Date.now(), scheme: '%h.example.com/%p', autoAssociate: true,
 				hosts: ['']});
 			currentProxyIdx = this.state.proxies.length-1;
 			currentHostIdx = 0;

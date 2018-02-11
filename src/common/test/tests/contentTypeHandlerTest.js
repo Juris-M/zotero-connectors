@@ -23,13 +23,17 @@
 	***** END LICENSE BLOCK *****
 */
 
+if (Zotero.isBrowserExt) {
+
 describe("ContentTypeHandler", function() {
 	describe('#observe()', function() {
 		it('calls Zotero.Connector_Browser.onPDFFrame when pdf frame loads', Promise.coroutine(function* () {
 			let args = yield background(function() {
 				var stub = sinon.stub(Zotero.Connector_Browser, 'onPDFFrame');
-				Zotero.ContentTypeHandler.observe({frameId: 1, tabId: 1, url: 'test', method: "GET",
-					responseHeadersObject: {'content-type': 'application/pdf'}});
+				Zotero.ContentTypeHandler.observe({
+					frameId: 1, tabId: 1, url: 'test', method: "GET",
+					responseHeadersObject: {'content-type': 'application/pdf'}
+				});
 				return new Zotero.Promise(function(resolve, reject) {
 					// onPDFFrame called out of observe event loop to not stall the page load
 					// since it's a blocking call
@@ -47,4 +51,90 @@ describe("ContentTypeHandler", function() {
 			assert.deepEqual(args, ['test', 1, 1]);
 		}));
 	});
+	
+	describe('#handleImportContent()', function() {
+		var tab;
+		before(async function() {
+			tab = await browser.tabs.create({url: 'about:blank', active: false})
+		});
+		
+		after(async function() {
+			await browser.tabs.remove(tab.id);
+		});
+		
+		it('displays an import prompt and imports on OK click', async function() {
+			let details = await background(async function(tabId) {
+				try {
+					// stubbing Zotero.Messaging.sendMessage('confirm', props, tab);
+					var stub1 = sinon.stub(Zotero.Messaging, 'sendMessage');
+					stub1.resolves({button: 1});
+					var stub2 = sinon.stub(Zotero.ContentTypeHandler, 'importFile');
+					var deferred = Zotero.Promise.defer();
+					stub2.callsFake(function(details) {
+						return deferred.resolve(details);
+					});
+					Zotero.ContentTypeHandler.observe({frameId: 1, tabId, url: 'test', method: "GET",
+						responseHeadersObject: {'content-type': 'application/x-research-info-systems'}});
+						
+					let result = await deferred.promise;
+					return result;
+				} finally {
+					stub1.restore();
+					stub2.restore();
+				}
+			}, tab.id);
+			assert.equal(details.url, 'test');
+		});
+		
+		it('displays an import prompt and navigates to target url on Cancel click', async function() {
+			let redirectUrl = await background(async function(tabId) {
+				try {
+					// stubbing Zotero.Messaging.sendMessage('confirm', props, tab);
+					var stub1 = sinon.stub(Zotero.Messaging, 'sendMessage');
+					stub1.resolves({button: 2});
+					var deferred = Zotero.Promise.defer();
+					var stub2 = sinon.stub(Zotero.ContentTypeHandler, '_redirectToOriginal').callsFake(function(tabId, url) {
+						deferred.resolve(url);
+					});
+					Zotero.ContentTypeHandler.observe({frameId: 1, tabId, url: 'test', method: "GET",
+						responseHeadersObject: {'content-type': 'application/x-research-info-systems'}});
+						
+					let result = await deferred.promise;
+					return result;
+				} finally {
+					stub1.restore();
+					stub2.restore();
+				}
+			}, tab.id);
+			assert.equal(redirectUrl, 'test');
+		});
+		
+		it('navigates to confirmation page if no injection context available', async function () {
+			await background(async function(tabId) {
+				try {
+					let confirm = Zotero.ContentTypeHandler.confirm;
+					var stub2 = sinon.stub(Zotero.ContentTypeHandler, 'confirm');
+					var deferred = Zotero.Promise.defer();
+					stub2.callsFake(async function(details) {
+						let tab = await browser.tabs.get(details.tabId);
+						if (tab.url.includes('confirm.html')) deferred.resolve();
+						return confirm.apply(Zotero.ContentTypeHandler, arguments);
+					});
+					
+					Zotero.ContentTypeHandler.observe({frameId: 1, tabId, url: 'http://www.zotero.org/', method: "GET",
+						responseHeadersObject: {'content-type': 'application/x-research-info-systems'}});
+
+					let result = await deferred.promise;
+					return result;
+				} finally {
+					stub2.restore();
+				}
+			}, tab.id);
+			tab = await browser.tabs.get(tab.id);
+			
+			assert.equal(tab.url, getExtensionURL('confirm.html'));
+		});
+	});
 });
+
+}

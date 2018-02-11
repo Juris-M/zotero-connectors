@@ -79,7 +79,6 @@ var injectInclude = [
 	'messages.js',
 	'messaging_inject.js'
 ];
-var injectIncludeBrowserExt = injectInclude.concat(['api.js']);
 var injectIncludeLast;
 if (argv.p) {
 	injectIncludeLast = ['inject/inject.js'];
@@ -91,8 +90,11 @@ if (argv.p) {
 		'tools/testTranslators/translatorTester_inject.js'
 	];
 }
-injectInclude.push.apply(injectInclude, injectIncludeLast);
-injectIncludeBrowserExt.push.apply(injectIncludeBrowserExt, injectIncludeLast);
+var injectIncludeSafari = [].concat(injectInclude, ['ui/notification.js'], injectIncludeLast);
+var injectIncludeBrowserExt = ['browser-polyfill.js'].concat(injectInclude, ['api.js'], injectIncludeLast);
+if (!argv.p) {
+	injectIncludeSafari = injectIncludeSafari.concat(['lib/sinon.js', 'test/testSetup.js'])
+}
 
 var backgroundInclude = [
 	'node_modules.js',
@@ -100,7 +102,6 @@ var backgroundInclude = [
 	'zotero.js',
 	'promise.js',
 	'prefs.js',
-	'errors_webkit.js',
 	'api.js',
 	'http.js',
 	'oauthsimple.js',
@@ -109,6 +110,7 @@ var backgroundInclude = [
 	'cachedTypes.js',
 	'zotero/date.js',
 	'zotero/debug.js',
+	'errors_webkit.js',
 	"zotero/xregexp/xregexp.js",
 	"zotero/xregexp/addons/build.js",
 	"zotero/xregexp/addons/matchrecursive.js",
@@ -136,7 +138,7 @@ if (!argv.p) {
 		'test/testSetup.js',
 		'lib/sinon.js');
 }
-var backgroundIncludeBrowserExt = backgroundInclude.concat([
+var backgroundIncludeBrowserExt = ['browser-polyfill.js'].concat(backgroundInclude, [
 	'webRequestIntercept.js',
 	'contentTypeHandler.js',
 ]);
@@ -194,22 +196,22 @@ function processFile() {
 		var addFiles = function(file) {
 			// Amend paths
 			if (type === 'common' || type === 'browserExt') {
+				if (file.path.includes('.html')) {
+					file.contents = Buffer.from(replaceScriptsHTML(
+						file.contents.toString(), "<!--SCRIPTS-->", injectIncludeBrowserExt.map(s => `../../${s}`)));
+				}
 				var f = file.clone({contents: false});
 				f.path = parts.slice(0, i-1).join('/') + '/build/browserExt/' + parts.slice(i+1).join('/');
 				console.log(`-> ${f.path.slice(f.cwd.length)}`);
 				this.push(f);
 			}
 			if (type === 'common' || type === 'safari') {
+				if (file.path.includes('test/data') && file.path.includes('.html')) {
+					file.contents = Buffer.from(replaceScriptsHTML(
+						file.contents.toString(), "<!--SCRIPTS-->", injectIncludeSafari.map(s => `../../${s}`)));
+				}
 				f = file.clone({contents: false});
 				f.path = parts.slice(0, i-1).join('/') + '/build/safari.safariextension/' + parts.slice(i+1).join('/');
-				if (ext === 'js') {
-					try {
-						f.contents = new Buffer(babel.transform(f.contents, {presets: ['es2015']}).code);
-					} catch (e) {
-						console.log(e.message);
-						return;
-					}
-				}
 				console.log(`-> ${f.path.slice(f.cwd.length)}`);
 				this.push(f);
 			}
@@ -229,6 +231,8 @@ function processFile() {
 				file.contents = Buffer.from(file.contents.toString()
 					.replace("/*BACKGROUND SCRIPTS*/",
 						backgroundIncludeBrowserExt.map((s) => `"${s}"`).join(',\n\t\t\t'))
+					.replace("/*INJECT SCRIPTS*/",
+						injectIncludeBrowserExt.map((s) => `"${s}"`).join(',\n\t\t\t'))
 					.replace(/"version": "[^"]*"/, '"version": "'+argv.version+'"'));
 				break;
 			case 'background.js':
@@ -240,10 +244,6 @@ function processFile() {
 				file.contents = Buffer.from(replaceScriptsHTML(
 					file.contents.toString(), "<!--SCRIPTS-->", backgroundInclude));
 				break;
-			case 'journalArticle-single.html':
-				file.contents = Buffer.from(replaceScriptsHTML(
-					file.contents.toString(), "<!--SCRIPTS-->", injectIncludeBrowserExt.map(s => `../../${s}`)));
-				break;
 			case 'preferences.html':
 				file.contents = Buffer.from(file.contents.toString()
 					.replace(/<!--BEGIN DEBUG-->([\s\S]*?)<!--END DEBUG-->/g, argv.p ? '' : '$1'));
@@ -251,7 +251,7 @@ function processFile() {
 			case 'Info.plist':
 				file.contents = Buffer.from(file.contents.toString()
 					.replace("<!--SCRIPTS-->",
-						injectInclude.map((s) => `<string>${s}</string>`).join('\n\t\t\t\t'))
+						injectIncludeSafari.map((s) => `<string>${s}</string>`).join('\n\t\t\t\t'))
 					.replace(/(<key>(?:CFBundleShortVersionString|CFBundleVersion)<\/key>\s*)<string>[^<]*<\/string>/g,
 						 '$1<string>'+argv.version+'</string>'));
 				break;
@@ -292,7 +292,8 @@ gulp.task('watch-chrome', function () {
 gulp.task('process-custom-scripts', function() {
 	let sources = [
 		'./src/browserExt/background.js',
-		'./src/browserExt/manifest.json', 
+		'./src/browserExt/manifest.json',
+		'./src/browserExt/confirm.html',
 		'./src/safari/global.html',
 		'./src/safari/Info.plist',
 		'./src/common/node_modules.js',
