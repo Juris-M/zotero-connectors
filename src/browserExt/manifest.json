@@ -45,7 +45,7 @@
 	"minimum_chrome_version": "55",
 	"applications": {
 		"gecko": {
-			"id": "zotero@chnm.gmu.edu",
+			"id": "juris-m@juris-m.github.io",
 			"update_url": "https://www.zotero.org/download/connector/firefox/updates.json",
 			"strict_min_version": "51.0"
 		}
