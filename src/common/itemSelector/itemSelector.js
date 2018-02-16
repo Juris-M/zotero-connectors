@@ -73,7 +73,11 @@ function load() {
 		
 		itemSelector.appendChild(item);
 	}
-	
+
+    var myWidth = window.outerWidth;
+    window.resizeTo(window.outerWidth+1, window.outerHeight);
+    window.resizeTo(window.outerWidth, window.outerHeight);
+    
 	window.onbeforeunload = cancel;
 	
 	// OK on Return, Cancel on Esc
