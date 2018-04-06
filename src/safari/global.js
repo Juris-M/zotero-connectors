@@ -38,6 +38,11 @@ Zotero.Connector_Browser = new function() {
 		if (Zotero.Proxies.transparent) {
 			Zotero.Proxies.onPageLoadSafari(tab);
 		}
+
+		if(tab.translators) {
+			tab.isPDFFrame = false;
+			tab.translators = null;
+		}
 	};
 	
 	/**
@@ -86,8 +91,7 @@ Zotero.Connector_Browser = new function() {
 	 */
 	this.onSelect = function(items, tab) {
 		var deferred = Zotero.Promise.defer();
-		var newTab = safari.application.openBrowserWindow().activeTab;
-		newTab.url = safari.extension.baseURI+"itemSelector/itemSelector.html#"+encodeURIComponent(JSON.stringify([tab.id, items]));
+		Zotero.Connector_Browser.openWindow(safari.extension.baseURI+"itemSelector/itemSelector.html#"+encodeURIComponent(JSON.stringify([tab.id, items])));
 		_selectCallbacksForTabIDs[tab.id] = deferred.resolve;
 		return deferred.promise;
 	}
@@ -108,7 +112,7 @@ Zotero.Connector_Browser = new function() {
 		var tab = safari.application.activeBrowserWindow.activeTab;
 		if (command === "zotero-button") {
 			if(tab.translators && tab.translators.length) {
-				Zotero.Connector_Browser.saveWithTranslator(tab, 0, true);
+				Zotero.Connector_Browser.saveWithTranslator(tab, 0, {fallbackOnFailure: true});
 			} else {
 				var withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
 					Zotero.Prefs.get('automaticSnapshots');
@@ -160,15 +164,35 @@ Zotero.Connector_Browser = new function() {
 		return tab.private;
 	}
 
-	this.saveWithTranslator = function(tab, i, fallbackOnFailure=false) {
-		return Zotero.Messaging.sendMessage("translate", [tab.instanceID, 
-				tab.translators[i].translatorID, fallbackOnFailure], tab);
+	this.saveWithTranslator = function(tab, i, options) {
+		var translator = tab.translators[i];
+		return Zotero.Messaging.sendMessage(
+			"translate",
+			[
+				tab.instanceID,
+				translator.translatorID,
+				options
+			],
+			tab
+		);
 	}
 
 	this.saveAsWebpage = function(tab, withSnapshot) {
 		let title = tab.title.split('/');
 		title = title[title.length-1];
 		return Zotero.Messaging.sendMessage("saveAsWebpage", [tab.instanceID || 0, [title, withSnapshot]], tab);
+	}
+
+	this.openWindow = function(url, options={}) {
+		var newTab = safari.application.openBrowserWindow().activeTab;
+		newTab.url = url;
+		if (typeof options.onClose == 'function') {
+			newTab.addEventListener('close', options.onClose);
+		}
+	};
+	
+	this.bringToFront = function() {
+		safari.application.activeBrowserWindow.activate();
 	}
 
 	this.openTab = function(url) {
@@ -303,10 +327,6 @@ safari.application.addEventListener('activate', function(e) {
 safari.application.addEventListener('beforeNavigate', function(e) {
 	if (e.target == safari.application.activeBrowserWindow.activeTab) {
 		Zotero.Connector.reportActiveURL(e.target.url);
-	}
-	if (e.target.translators) {
-		e.target.translators = null;
-		e.target.isPDFFrame = false;
 	}
 }, true);
 Zotero.Messaging.addMessageListener("selectDone", Zotero.Connector_Browser.onSelectDone);

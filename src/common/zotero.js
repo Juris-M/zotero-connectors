@@ -48,33 +48,36 @@ var Zotero = new function() {
 	this.isChrome = window.navigator.userAgent.indexOf("Chrome") !== -1 || window.navigator.userAgent.indexOf("Chromium") !== -1;
 	this.isBrowserExt = this.isFirefox || this.isEdge || this.isChrome;
 
+	this.isMac = (window.navigator.platform.substr(0, 3) == "Mac");
+	this.isWin = (window.navigator.platform.substr(0, 3) == "Win");
+	this.isLinux = (window.navigator.platform.substr(0, 5) == "Linux");
+
 	if (this.isFirefox) {
 		this.browser = "g";
-		this.clientName = 'Firefox Connector';
+		this.clientName = 'Firefox';
 	} else if (this.isSafari) {
 		this.browser = "s";
-		this.clientName = 'Safari Connector';
+		this.clientName = 'Safari';
 	} else if (this.isIE) {
 		this.browser = "i";
-		this.clientName = 'Internet Explorer';
+		this.clientName = 'Internet Explorer'; // ?
 	} else if (this.isEdge) {
 		this.browser = "c";
-		this.clientName = 'Edge Connector';
+		this.clientName = 'Edge';
 	} else if (this.isChrome) {
 		this.browser = "c";
-		this.clientName = 'Chrome Connector';
+		this.clientName = 'Chrome';
 	} else {
 		// Assume this is something with no more capabilities than IE
 		this.browser = "i";
 		this.clientName = window.navigator.appName;
 	}
+	this.appName = `Zotero Connector for ${this.clientName}`;
 	
 	if (this.isBrowserExt) {
 		this.version = browser.runtime.getManifest().version;
-		this.appName = browser.runtime.getManifest().name;
 	} else if (this.isSafari) {
 		this.version = safari.extension.bundleVersion;
-		this.appName = 'Zotero Connector';
 	}
 	
 	// window.Promise and Promise differ (somehow) in Firefox and when certain
@@ -167,7 +170,15 @@ var Zotero = new function() {
 			// IE and the likes? Who knows
 			this.platform = 'win';
 		}
-
+		
+		// Add browser version info
+		if (this.isFirefox) {
+			browser.runtime.getBrowserInfo().then(info => {
+				this.browserVersion = info.version;
+				this.browserMajorVersion = parseInt(info.version.match(/^[0-9]+/)[0]);
+			});
+		}
+		
 		await Zotero.Prefs.init();
 		
 		Zotero.Debug.init();
@@ -190,6 +201,10 @@ var Zotero = new function() {
 		Zotero.isInject = true;
 		Zotero.Messaging.init();
 		Zotero.Connector_Types.init();
+		Zotero.ConnectorIntegration.init();
+		if (Zotero.GoogleDocs) {
+			Zotero.GoogleDocs.init();
+		}
 		Zotero.Prefs.loadNamespace(['translators.', 'downloadAssociatedFiles', 'automaticSnapshots',
 			'reportTranslationFailure', 'capitalizeTitles']);
 		return Zotero.Prefs.loadNamespace('debug').then(function() {
@@ -211,7 +226,7 @@ var Zotero = new function() {
 			userAgent: navigator.userAgent
 		};
 		
-		info.appName = Zotero.clientName;
+		info.appName = Zotero.appName;
 		info.zoteroAvailable = !!(await Zotero.Connector.checkIsOnline());
 		
 		var str = '';
@@ -324,6 +339,8 @@ Zotero.Prefs = new function() {
 		"proxies.disableByDomainString": '.edu',
 		"proxies.proxies": [],
 		"proxies.clientChecked": false,
+		
+		"integration.googleDocs.enabled": false
 	};
 	
 	this.syncStorage = {};

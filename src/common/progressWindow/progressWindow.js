@@ -1,8 +1,7 @@
-<!DOCTYPE html>
-<!--
+/*
     ***** BEGIN LICENSE BLOCK *****
     
-    Copyright © 2017 Center for History and New Media
+    Copyright © 2018 Center for History and New Media
                      George Mason University, Fairfax, Virginia, USA
                      http://zotero.org
     
@@ -22,17 +21,13 @@
     along with Zotero.  If not, see <http://www.gnu.org/licenses/>.
     
     ***** END LICENSE BLOCK *****
--->
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<title>Zotero - Confirm Import</title>
-</head>
-<body>
-<!--SCRIPTS-->
-<script src="lib/react.js"></script>
-<script src="lib/react-dom.js"></script>
-<script src="lib/prop-types.js"></script>
-<script src="ui/ModalPrompt.js"></script>
-</body>
-</html>
+*/
+
+window.onload = function () {
+	var div = document.getElementById('progress-window');
+	Zotero.Messaging.init();
+	ReactDOM.render(
+		React.createElement(Zotero.ui.ProgressWindow,),
+		div
+	);
+};

@@ -79,44 +79,18 @@ Zotero.Connector_Browser = new function() {
 	/**
 	 * Called to display select items dialog
 	 */
-	this.onSelect = function(items, tab) {
-		var width, height, left, top;
-		return browser.windows.get(tab.windowId, null).then(function (win) {
-			width = 600;
-			height = 325;
-			left = Math.floor(win.left + (win.width / 2) - (width / 2));
-			top = Math.floor(win.top + (win.height / 2) - (height / 2));
-			
-			return browser.windows.create(
-				{
-					url: browser.extension.getURL("itemSelector/itemSelector.html")
-						+ "#" + encodeURIComponent(JSON.stringify([tab.id, items]))
-						// Remove once https://bugzilla.mozilla.org/show_bug.cgi?id=719905 is fixed
-						.replace(/%3A/g, 'ZOTEROCOLON'),
-					height: height,
-					width: width,
-					top: top,
-					left: left,
-					type: 'popup'
-				})
-		}).then(async function (win) {
-			// Fix positioning in Chrome when window is on second monitor
-			// https://bugs.chromium.org/p/chromium/issues/detail?id=137681
-			if (Zotero.isBrowserExt && win.left < left) {
-				browser.windows.update(win.id, {left});
-			}
-			// Fix a Firefox bug where content does not appear before resize on linux
-			// https://bugzilla.mozilla.org/show_bug.cgi?id=1402110
-			// this one might actually get fixed, unlike the one above
-			if (Zotero.isFirefox) {
-				await Zotero.Promise.delay(1000);
-				browser.windows.update(win.id, {width: win.width+1});
-			}
-			return new Promise(function(resolve) {
-				_tabInfo[tab.id].selectCallback = resolve;
-			});
+	this.onSelect = async function(items, tab) {
+		await Zotero.Connector_Browser.openWindow(
+			browser.extension.getURL("itemSelector/itemSelector.html")
+				+ "#" + encodeURIComponent(JSON.stringify([tab.id, items]))
+				// Remove once https://bugzilla.mozilla.org/show_bug.cgi?id=719905 is fixed
+				.replace(/%3A/g, 'ZOTEROCOLON'),
+			{width: 600, height: 325}, tab
+		);
+		return new Promise(function(resolve) {
+			_tabInfo[tab.id].selectCallback = resolve;
 		});
-	}
+	};
 	
 	/**
 	 * Called when a tab is removed or the URL has changed
@@ -333,6 +307,53 @@ Zotero.Connector_Browser = new function() {
 			clearTimeout(timeout);
 		}
 	};
+	
+	this.openWindow = async function(url, options={}, tab=null) {
+		if (!tab) {
+			tab = (await browser.tabs.query({active: true}))[0];
+		}
+		options = Object.assign({
+			width: 800,
+			height: 600,
+			type: "popup"
+		}, options);
+		let win = await browser.windows.get(tab.windowId, null);
+		options.left = Math.floor(win.left + (win.width / 2) - (options.width / 2));
+		options.top = Math.floor(win.top + (win.height / 2) - (options.height / 2));
+			
+		win = await browser.windows.create({
+			url,
+			type: options.type,
+			width: options.width,
+			height: options.height,
+			left: options.left,
+			top: options.top
+		});
+		
+		// Fix positioning in Chrome when window is on second monitor
+		// https://bugs.chromium.org/p/chromium/issues/detail?id=137681
+		if (Zotero.isBrowserExt && win.left < options.left) {
+			browser.windows.update(win.id, { left: options.left });
+		}
+		// Fix a Firefox bug where content does not appear before resize on linux
+		// https://bugzilla.mozilla.org/show_bug.cgi?id=1402110
+		// this one might actually get fixed, unlike the one above
+		if (Zotero.isFirefox) {
+			await Zotero.Promise.delay(1000);
+			browser.windows.update(win.id, {width: win.width+1});
+		}
+		if (typeof options.onClose == 'function') {
+			browser.windows.onRemoved.addListener(function onClose(id) {
+				if (id == win.id) options.onClose();
+				browser.windows.onRemoved.removeListener(onClose);
+			});
+		}
+	};
+	
+	this.bringToFront = async function(drawAttention=false) {
+		let win = await browser.windows.getLastFocused();
+		browser.windows.update(win.id, {drawAttention, focused: true});
+	}
 
 	this.openTab = function(url, tab) {
 		if (tab) {
@@ -430,6 +451,9 @@ Zotero.Connector_Browser = new function() {
 		if (translators && translators.length) {
 			_showTranslatorIcon(tab, translators[0]);
 			_showTranslatorContextMenuItem(translators, saveMenuID);
+			if (translators[0].itemType != "multiple") {
+				_showNoteContextMenuItems(saveMenuID);
+			}
 		} else if (isPDF) {
 			Zotero.Connector_Browser._showPDFIcon(tab);
 		} else {
@@ -583,6 +607,18 @@ Zotero.Connector_Browser = new function() {
 		}
 	}
 	
+	function _showNoteContextMenuItems(parentID) {
+		browser.contextMenus.create({
+			id: "zotero-context-menu-translator-save-with-selection-note",
+			title: "Create Zotero Item and Note from Selection",
+			onclick: function (info, tab) {
+					Zotero.Connector_Browser.saveWithTranslator(tab, 0, {note: info.selectionText});
+			},
+			parentId: parentID,
+			contexts: ['selection']
+		});
+	}
+	
 	function _showWebpageContextMenuItem(parentID) {
 		var fns = [];
 		fns.push(() => browser.contextMenus.create({
@@ -673,7 +709,7 @@ Zotero.Connector_Browser = new function() {
 			});
 		}
 		else if(_tabInfo[tab.id] && _tabInfo[tab.id].translators && _tabInfo[tab.id].translators.length) {
-			Zotero.Connector_Browser.saveWithTranslator(tab, 0, true);
+			Zotero.Connector_Browser.saveWithTranslator(tab, 0, {fallbackOnFailure: true});
 		} else {
 			if (_tabInfo[tab.id] && _tabInfo[tab.id].isPDF) {
 				Zotero.Connector_Browser.saveAsWebpage(tab, _tabInfo[tab.id].frameId, true);
@@ -684,15 +720,30 @@ Zotero.Connector_Browser = new function() {
 			}
 		}
 	}
-	
-	this.saveWithTranslator = function(tab, i, fallbackOnFailure=false) {
+
+	/**
+	 * @param tab <Tab>
+	 * @param i <Integer> the index of translator to save with
+	 * @param options <Object>
+	 * 		- fallbackOnFailure <Boolean> if translation fails, attempt to save with lower priority translators
+	 * 		- note <String> add string as a note to the saved item
+	 * @returns {Promise<*>}
+	 */
+	this.saveWithTranslator = function(tab, i, options) {
+		var translator = _tabInfo[tab.id].translators[i];
+		
 		// Set frameId to null - send message to all frames
 		// There is code to figure out which frame should translate with instanceID.
-		return Zotero.Messaging.sendMessage("translate", [
-			_tabInfo[tab.id].instanceID,
-			_tabInfo[tab.id].translators[i].translatorID,
-			fallbackOnFailure
-		], tab, null);
+		return Zotero.Messaging.sendMessage(
+			"translate",
+			[
+				_tabInfo[tab.id].instanceID,
+				translator.translatorID,
+				options
+			],
+			tab,
+			null
+		);
 	}
 	
 	this.saveAsWebpage = function(tab, frameId, withSnapshot) {

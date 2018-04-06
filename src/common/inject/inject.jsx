@@ -34,69 +34,7 @@ if(window.top) {
 }
 var instanceID = isTopWindow ? 0 : (new Date()).getTime();
 
-if(isTopWindow) {
-	/*
-	 * Register save dialog listeners
-	 *
-	 * When an item is saved (by this page or by an iframe), the item will be relayed back to 
-	 * the background script and then to this handler, which will show the saving dialog
-	 */
-	Zotero.Messaging.addMessageListener("progressWindow.show", function(headline) {
-		Zotero.ProgressWindow.show();
-		if (headline) {
-			return Zotero.ProgressWindow.changeHeadline(headline);
-		}
-		Zotero.Connector.callMethod("getSelectedCollection", {}).then(function(response) {
-			Zotero.ProgressWindow.changeHeadline("Saving to ",
-				response.id ? "treesource-collection.png" : "treesource-library.png",
-				response.name+"\u2026");
-			if (response.libraryEditable === false) {
-				new Zotero.ProgressWindow.ErrorMessage("collectionNotEditable");
-				Zotero.ProgressWindow.startCloseTimer(8000);
-			}
-		}, function() {
-			Zotero.ProgressWindow.changeHeadline("Saving to zotero.org");
-		});
-	});
-	var itemProgress = {};
-	Zotero.Messaging.addMessageListener("progressWindow.itemSaving", function(data) {
-		itemProgress[data[2]] = new Zotero.ProgressWindow.ItemProgress(data[0], data[1],
-			data.length > 3 ? itemProgress[data[3]] : undefined);
-	});
-	Zotero.Messaging.addMessageListener("progressWindow.itemProgress", function(data) {
-		var progress = itemProgress[data[2]];
-		if(!progress || !data[2]) {
-			progress = itemProgress[data[2]] = new Zotero.ProgressWindow.ItemProgress(data[0], data[1]);
-		} else {
-			progress.setIcon(data[0]);
-		}
-		
-		if(data[3] === false) {
-			progress.setError();
-		} else {
-			progress.setProgress(data[3]);
-		}
-	});
-	Zotero.Messaging.addMessageListener("progressWindow.close", Zotero.ProgressWindow.close);
-	Zotero.Messaging.addMessageListener("progressWindow.done", function(returnValue) {
-		if (Zotero.isBrowserExt
-			&& document.location.href.startsWith(browser.extension.getURL('confirm.html')))
-		{
-			setTimeout(function() {
-				window.close();
-			}, 1000);
-		}
-		else if (returnValue[0]) {
-			Zotero.ProgressWindow.startCloseTimer(2500);
-		}
-		else {
-			new Zotero.ProgressWindow.ErrorMessage(returnValue[1] || "translationError");
-			Zotero.ProgressWindow.startCloseTimer(8000);
-		}
-	});
-	Zotero.Messaging.addMessageListener("progressWindow.error", function(args) {
-		new Zotero.ProgressWindow.ErrorMessage(args.shift(), args);
-	})
+if (isTopWindow) {
 	Zotero.Messaging.addMessageListener("confirm", function (props) {
 		return Zotero.Inject.confirm(props);
 	});
@@ -114,6 +52,7 @@ if(isTopWindow) {
  */
 Zotero.Inject = new function() {
 	var _translate;
+	this.sessionDetails = {};
 	this.translators = [];
 		
 	/**
@@ -121,10 +60,15 @@ Zotero.Inject = new function() {
 	 */
 	this.init = function(force) {	
 		// On OAuth completion, close window and call completion listener
-		if(document.location.href.substr(0, ZOTERO_CONFIG.OAUTH_CALLBACK_URL.length+1) === ZOTERO_CONFIG.OAUTH_CALLBACK_URL+"?") {
+		if(document.location.href.substr(0, ZOTERO_CONFIG.OAUTH.ZOTERO.CALLBACK_URL.length+1) === ZOTERO_CONFIG.OAUTH.ZOTERO.CALLBACK_URL+"?") {
 			Zotero.API.onAuthorizationComplete(document.location.href.substr(ZOTERO_CONFIG.OAUTH_CALLBACK_URL.length+1));
-			return;
+		} else if (document.location.href.substr(0, ZOTERO_CONFIG.OAUTH.ZOTERO.CALLBACK_URL.length+1) === ZOTERO_CONFIG.OAUTH.GOOGLE_DOCS.CALLBACK_URL+"#") {
+			Zotero.GoogleDocs_API.onAuthComplete(document.location.href);
 		}
+
+		const noteImgSrc = Zotero.isSafari
+			? safari.extension.baseURI+"images/treeitem-note.png"
+			: browser.extension.getURL('images/treeitem-note.png');
 		
 		// wrap this in try/catch so that errors will reach logError
 		try {
@@ -166,24 +110,63 @@ Zotero.Inject = new function() {
 				});
 				_translate.setHandler("itemSaving", function(obj, item) {
 					// this relays an item from this tab to the top level of the window
-					Zotero.Messaging.sendMessage("progressWindow.itemSaving",
-						[Zotero.ItemTypes.getImageSrc(item.itemType), item.title, item.id]);
+					Zotero.Messaging.sendMessage(
+						"progressWindow.itemProgress",
+						[
+							item.id,
+							Zotero.ItemTypes.getImageSrc(item.itemType),
+							item.title
+						]
+					);
 				});
 				_translate.setHandler("itemDone", function(obj, dbItem, item) {
 					// this relays an item from this tab to the top level of the window
-					Zotero.Messaging.sendMessage("progressWindow.itemProgress",
-						[Zotero.ItemTypes.getImageSrc(item.itemType), item.title, item.id, 100]);
+					Zotero.Messaging.sendMessage(
+						"progressWindow.itemProgress",
+						[
+							item.id,
+							Zotero.ItemTypes.getImageSrc(item.itemType),
+							item.title,
+							false,
+							100
+						]
+					);
 					for(var i=0; i<item.attachments.length; i++) {
 						var attachment = item.attachments[i];
-						Zotero.Messaging.sendMessage("progressWindow.itemSaving",
-							[determineAttachmentIcon(attachment), attachment.title, attachment.id,
-								item.id]);
+						Zotero.Messaging.sendMessage(
+							"progressWindow.itemProgress",
+							[
+								attachment.id,
+								determineAttachmentIcon(attachment),
+								attachment.title,
+								item.id
+							]
+						);
+					}
+					if (item.notes) {
+						for (let note of item.notes) {
+							Zotero.Messaging.sendMessage('progressWindow.itemProgress', [
+								null,
+								noteImgSrc,
+								note.note,
+								item.id,
+								100
+							])
+						}
 					}
 				});
 				_translate.setHandler("attachmentProgress", function(obj, attachment, progress, err) {
 					if(progress === 0) return;
-					Zotero.Messaging.sendMessage("progressWindow.itemProgress",
-						[determineAttachmentIcon(attachment), attachment.title, attachment.id, progress]);
+					Zotero.Messaging.sendMessage(
+						"progressWindow.itemProgress",
+						[
+							attachment.id,
+							determineAttachmentIcon(attachment),
+							attachment.title,
+							false,
+							progress
+						]
+					);
 				});
 				_translate.setHandler("pageModified", function() {
 					Zotero.Connector_Browser.onPageLoad();
@@ -228,15 +211,19 @@ Zotero.Inject = new function() {
 	 * @param components {Object[]} an array of component names to load
 	 * @return {Promise} resolves when components are injected
 	 */
-	this.loadReactComponents = async function(components) {
+	this.loadReactComponents = async function(components=[]) {
 		if (Zotero.isSafari) return;
 		var toLoad = [];
 		if (typeof ReactDOM === "undefined") {
-			toLoad = ['lib/react.js', 'lib/react-dom.js'];
+			toLoad = [
+				'lib/react.js',
+				'lib/react-dom.js',
+				'lib/prop-types.js'
+			];
 		}
 		for (let component of components) {
-			if (!Zotero.ui || !Zotero.ui[component]) {
-				toLoad.push(`ui/${component.replace(/(.)([A-Z])/g, '$1-$2').toLowerCase()}.js`)
+			if (!Zotero.UI || !Zotero.UI[component]) {
+				toLoad.push(`ui/${component}.js`)
 			}
 		}
 		if (toLoad.length) {
@@ -260,10 +247,7 @@ Zotero.Inject = new function() {
 			div.id = 'zotero-modal-prompt';
 			div.style.cssText = 'z-index: 1000000; position: fixed; top: 0; left: 0; width: 100%; height: 100%';
 			let prompt = (
-				<Zotero.ui.ModalPrompt 
-					onClose={onClose}
-					{...props}
-				/>
+				<Zotero.UI.ModalPrompt onClose={onClose} {...props}/>
 			);
 			function onClose(state, event) {
 				deferred.resolve({
@@ -304,7 +288,7 @@ Zotero.Inject = new function() {
 				await Zotero.Promise.delay(500);
 				await Zotero.Inject.loadReactComponents(['Notification']);
 				
-				var notification = new Zotero.ui.Notification(text, buttons);
+				var notification = new Zotero.UI.Notification(text, buttons);
 				if (timeout) setTimeout(notification.dismiss.bind(notification, null, 0), timeout);
 				return notification.show();
 			}.bind(this);
@@ -388,24 +372,50 @@ Zotero.Inject = new function() {
 		}
 	};
 	
-	this.translate = async function(translatorID, fallbackOnFailure=false) {
+	this.translate = async function(translatorID, options={}) {
 		let result = await Zotero.Inject.checkActionToServer();
 		if (!result) return;
+		var translator = this.translators.find((t) => t.translatorID == translatorID);
 		
-		Zotero.Messaging.sendMessage("progressWindow.show", null);
+		// If the URL hasn't changed (from a history push) and the user triggered the same
+		// non-multiple translator as the last successful save, use the same session ID to reopen
+		// the popup.
+		if (Zotero.Inject.sessionDetails.id
+				&& document.location.href == Zotero.Inject.sessionDetails.url
+				&& translatorID == Zotero.Inject.sessionDetails.translatorID
+				&& translator.itemType != 'multiple') {
+			let sessionID = Zotero.Inject.sessionDetails.id;
+			Zotero.Messaging.sendMessage("progressWindow.show", [sessionID]);
+			return;
+		}
+		
+		var sessionID = Zotero.Utilities.randomString();
+		Zotero.Messaging.sendMessage("progressWindow.show", [sessionID]);
+		
+		Zotero.Inject.sessionDetails = {saveOptions: options};
+		
 		var translators = Array.from(this.translators);
 		while (translators[0].translatorID != translatorID) {
 			translators.shift();
 		}
 		while (true) {
-			var translator = translators.shift();
+			translator = translators.shift();
 			_translate.setTranslator(translator);
 			try {
-				let items = await _translate.translate();
+				let items = await _translate.translate({ sessionID });
 				Zotero.Messaging.sendMessage("progressWindow.done", [true]);
+				// Record details for the last successful save. We're storing the translator
+				// chosen by the user, regardless of whether there was a fallback to another
+				// translator.
+				Object.assign(Zotero.Inject.sessionDetails, {
+					id: sessionID,
+					url: document.location.href,
+					translatorID
+				});
 				return items;
 			} catch (e) {
-				if (fallbackOnFailure && translators.length) {
+				// Should we fallback if translator.itemType == "multiple"?
+				if (options.fallbackOnFailure && translators.length) {
 					Zotero.Messaging.sendMessage("progressWindow.error", ['fallback', translator.label, translators[0].label]);
 				} else {
 					Zotero.Messaging.sendMessage("progressWindow.done", [false]);
@@ -413,7 +423,6 @@ Zotero.Inject = new function() {
 				}
 			}
 		}
-
 	};
 	
 	this.saveAsWebpage = async function (args) {
@@ -422,7 +431,19 @@ Zotero.Inject = new function() {
 		var result = await Zotero.Inject.checkActionToServer();
 		if (!result) return;
 		
+		var translatorID = 'webpage' + (withSnapshot ? 'WithSnapshot' : '');
+		if (Zotero.Inject.sessionDetails.id
+				&& document.location.href == Zotero.Inject.sessionDetails.url
+				&& translatorID == Zotero.Inject.sessionDetails.translatorID) {
+			let sessionID = Zotero.Inject.sessionDetails.id;
+			Zotero.Messaging.sendMessage("progressWindow.show", [sessionID]);
+			return;
+		}
+		
+		var sessionID = Zotero.Utilities.randomString();
+		
 		var data = {
+			sessionID,
 			url: document.location.toString(),
 			cookie: document.cookie,
 			html: document.documentElement.innerHTML,
@@ -436,15 +457,34 @@ Zotero.Inject = new function() {
 			image = "webpage";
 		}
 
-		Zotero.Messaging.sendMessage("progressWindow.show", null);
-		Zotero.Messaging.sendMessage("progressWindow.itemSaving",
-			[Zotero.ItemTypes.getImageSrc(image), title, title]);
+		Zotero.Messaging.sendMessage("progressWindow.show", [sessionID]);
+		Zotero.Messaging.sendMessage(
+			"progressWindow.itemProgress",
+			[
+				title,
+				Zotero.ItemTypes.getImageSrc(image),
+				title
+			]
+		);
 		try {
 			result = await Zotero.Connector.callMethodWithCookies("saveSnapshot", data);
 		
-			Zotero.Messaging.sendMessage("progressWindow.itemProgress",
-				[Zotero.ItemTypes.getImageSrc(image), title, title, 100]);
+			Zotero.Messaging.sendMessage(
+				"progressWindow.itemProgress",
+				[
+					title,
+					Zotero.ItemTypes.getImageSrc(image),
+					title,
+					false,
+					100
+				]
+			);
 			Zotero.Messaging.sendMessage("progressWindow.done", [true]);
+			Object.assign(Zotero.Inject.sessionDetails, {
+				id: sessionID,
+				url: document.location.href,
+				translatorID
+			});
 			return result;
 		} catch (e) {
 			// Client unavailable
@@ -453,8 +493,18 @@ Zotero.Inject = new function() {
 				if (document.contentType != 'application/pdf') {
 					let itemSaver = new Zotero.Translate.ItemSaver({});
 					let items = await itemSaver.saveAsWebpage();
-					if (items.length) Zotero.Messaging.sendMessage("progressWindow.itemProgress",
-						[Zotero.ItemTypes.getImageSrc(image), title, title, 100]);
+					if (items.length) {
+						Zotero.Messaging.sendMessage(
+							"progressWindow.itemProgress",
+							[
+								title,
+								Zotero.ItemTypes.getImageSrc(image),
+								title,
+								false,
+								100
+							]
+						);
+					}
 					return;
 				} else {
 					Zotero.Messaging.sendMessage("progressWindow.done", [false, 'clientRequired']);
@@ -469,6 +519,18 @@ Zotero.Inject = new function() {
 			throw e;
 		}
 	};
+	
+	this.addKeyboardShortcut = function(eventDescriptor, fn, elem) {
+		elem = elem || document;
+		elem.addEventListener('keyup', function ZoteroKeyboardShortcut(event) {
+			for (let prop in eventDescriptor) {
+				if (event[prop] != eventDescriptor[prop]) return;
+			}
+			event.stopPropagation();
+			event.preventDefault();
+			fn();
+		});
+	}
 };
 
 // check whether this is a hidden browser window being used for scraping

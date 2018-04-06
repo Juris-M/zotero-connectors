@@ -131,7 +131,8 @@ var MESSAGES = {
 		firstSaveToServerPrompt: true,
 		openTab: false,
 		openConfigEditor: false,
-		openPreferences: false
+		openPreferences: false,
+		bringToFront: false
 	},
 	Connector_Debug: {
 		storing: true,
@@ -145,13 +146,34 @@ var MESSAGES = {
 		sendErrorReport: true
 	},
 	Messaging: {
-		sendMessage: true
+		sendMessage: {
+			background: {
+				postReceive: async function(args, tab, frameId) {
+					// Ensure arg[2] is the current tab
+					if (args.length > 2) {
+						args[2] = tab;
+					} else {
+						args.push(tab);
+					}
+					// If frameId not set then use the top frame
+					if (args.length <= 3) {
+						args.push(0);
+					}
+					return args;
+				}
+			},
+		}
 	},
 	API: {
 		authorize: true,
 		onAuthorizationComplete: false,
 		clearCredentials: false,
-		getUserInfo: true
+		getUserInfo: true,
+		run: true
+	},
+	GoogleDocs_API: {
+		onAuthComplete: false,
+		run: true
 	},
 	Prefs: {
 		set: false,
