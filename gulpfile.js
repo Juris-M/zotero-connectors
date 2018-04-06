@@ -173,10 +173,11 @@ function replaceScriptsHTML(string, match, scripts) {
 function processFile() {
 	return through.obj(function(file, enc, cb) {
 		console.log(file.path.slice(file.cwd.length));
+		var offset = file.cwd.split('/').length;
 		var parts = file.path.split('/');
 		var basename = parts[parts.length-1];
 		var ext = basename.split('.')[1];
-		for (var i = 0; i < parts.length; i++) {
+		for (var i = offset; i < parts.length; i++) {
 			if ('src' === parts[i]) {
 				i++;
 				break;
@@ -331,5 +332,6 @@ gulp.task('process-custom-scripts', function() {
 		.pipe(processFile())
 		.pipe(gulp.dest((data) => data.base));
 });
+
 
 gulp.task('default', ['watch']);
