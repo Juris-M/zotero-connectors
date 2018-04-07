@@ -91,7 +91,7 @@ test framework documentation
 
 # Developing
 
-Zotero Connectors are built with standard tools, such as browser extension APIs, but the architecture is quite complex. 
+Juris-M Connectors are built with standard tools, such as browser extension APIs, but the architecture is quite complex. 
 This section is a short overview of some of the complexities, to make it more accessible for newcomers.
 
 ## Technologies
@@ -107,16 +107,16 @@ and [Firefox Extension docs](https://developer.mozilla.org/en-US/Add-ons/WebExte
 The functionality exposed on Safari is provided by the Safari extensions framework. See 
 [Safari Extension docs](https://developer.apple.com/safari/extensions/) for more information.
 
-##### Zotero Translator Framework
+##### Juris-M Translator Framework
 
-The Connectors share code with [Zotero desktop application](https://github.com/zotero/zotero), to support translation.
-A basic understanding of how translation works or at least the handlers it exposes in Zotero will be highly useful in
+The Connectors share code with [Juris-M desktop application](https://github.com/juris-m/zotero), to support translation.
+A basic understanding of how translation works or at least the handlers it exposes in Juris-M will be highly useful in
 understanding the codebase.
 
 ## Components
 
-Saving resources to Zotero library is facilitated by two major components: the Zotero Connector running in the browser
-and either the Zotero client or zotero.org web api. The Zotero Connector itself is split into two components: 
+Saving resources to Juris-M library is facilitated by two major components: the Juris-M Connector running in the browser
+and either the Juris-M client or zotero.org web api. The Juris-M Connector itself is split into two components: 
 code running on the webpage and a background process.
 
 <img src="http://i.imgur.com/4r2qRqe.png" width="600"/>
@@ -125,44 +125,44 @@ code running on the webpage and a background process.
 ##### a) Injected scripts for individual webpages
 
 Each webpage is injected ([Chrome](https://developer.chrome.com/extensions/content_scripts)/[Firefox](https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Content_scripts)/[Safari](https://developer.apple.com/library/content/documentation/Tools/Conceptual/SafariExtensionGuide/InjectingScripts/InjectingScripts.html))
-with a full Zotero [translation framework](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/gulpfile.js#L45-L79).
+with a full Juris-M [translation framework](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/gulpfile.js#L45-L79).
 A [*Zotero.Translate.Web*](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/inject/inject.jsx#L314-L314) 
 instance orchestrates running individual translators for detection and translation.
 
-The translation framework shares some code with the Zotero codebase and provides custom classes concerning 
+The translation framework shares some code with the Juris-M codebase and provides custom classes concerning 
 [translator retrieval](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/translators.js) 
 and [item saving](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/translate_item.js).
-These custom classes talk to the background process (b) of the Zotero Connector for functionality outside the translation
-framework, such as retrieving translator code and sending translated items either to Zotero (c) or zotero.org (d).
+These custom classes talk to the background process (b) of the Juris-M Connector for functionality outside the translation
+framework, such as retrieving translator code and sending translated items either to Juris-M (c) or zotero.org (d).
 
 ##### b) Background process
 
 The Connector runs a [background process](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/gulpfile.js#L95-L125) 
 ([Chrome](https://developer.chrome.com/extensions/event_pages)/[Firefox](https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Anatomy_of_a_WebExtension#Background_scripts)/[Safari](https://developer.apple.com/library/content/documentation/Tools/Conceptual/SafariExtensionGuide/AddingaGlobalHTMLPage/AddingaGlobalHTMLPage.html))
-which works as a middle-layer between the translation framework running in inject scripts (a) and Zotero (c) or zotero.org (d).
+which works as a middle-layer between the translation framework running in inject scripts (a) and Juris-M (c) or zotero.org (d).
 
 The background process maintains a cache of translators and performs the initial [translator detection using URL matching](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/translators.js#L140-L196).
 Translators whose target regexp matches the URL of a given webpage are then further tested by running `detectWeb()` 
 in injected scripts. A list of translators and their code is
-fetched either from [Zotero (c) or zotero.org (d)](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/repo.js#L140-L155).
+fetched either from [Juris-M (c) or zotero.org (d)](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/repo.js#L140-L155).
 
 The background process is also responsible for updating the extension UI, kicking off translations, storing and 
-retrieving connector preferences and sending translated items to Zotero or zotero.org. Browser specific scripts are
+retrieving connector preferences and sending translated items to Juris-M or zotero.org. Browser specific scripts are
 available for [BrowserExt](https://github.com/zotero/zotero-connectors/blob/master/src/browserExt/background.js)
 and [Safari](https://github.com/zotero/zotero-connectors/blob/master/src/safari/global.html).
 
-##### c) Connector server in Zotero
+##### c) Connector server in Juris-M
 
-When Zotero is open it runs a [connector HTTP server](https://www.zotero.org/support/dev/client_coding/connector_http_server)
-on port 23119. The HTTP server API accommodates interactions between the Connectors and Zotero client. Calls to
+When Juris-M is open it runs a [connector HTTP server](https://www.zotero.org/support/dev/client_coding/connector_http_server)
+on port 24119 (). The HTTP server API accommodates interactions between the Connectors and Juris-M client. Calls to
 [*Zotero.Connector.callMethod(endpoint)*](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/connector.js#L150) 
 in this codebase are translated to HTTP requests to the connector server.
 
-Note that Zotero cannot interact with the connectors on its own accord. All communication is Connector initiated.
+Note that Juris-M cannot interact with the connectors on its own accord. All communication is Connector initiated.
 
 ##### d) zotero.org API
 
-When Zotero is not available item saving falls back to
+When Juris-M is not available item saving falls back to
 using [zotero.org API](https://www.zotero.org/support/dev/web_api/v3/start).
 The interactions with zotero.org API are defined in [api.js](https://github.com/zotero/zotero-connectors/blob/e1a16c8ad2e17c6893554c3f376384e18182202d/src/common/api.js)
 
@@ -189,7 +189,7 @@ The injected scripts monkey-patch methods in *messaging_injected.js*([BrowserExt
 
 ## Build process
 
-The build process combines files from the Zotero codebase, common files to all connectors and specific files for
+The build process combines files from the Juris-M codebase, common files to all connectors and specific files for
 Chrome/Firefox/Safari connectors. At the moment the build process is awkward and uses a SH script and gulp procedures.
 This will be reconciled in the future to only use gulp.
 
