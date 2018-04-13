@@ -290,10 +290,19 @@ function copyResources {
 		"$EXTENSION_XPCOM_DIR/translation/translator.js" \
 		"$EXTENSION_XPCOM_DIR/translation/tlds.js" \
 		"$browser_builddir/zotero/translation"
-		
+	
+	# Make sure an empty browser-polyfill.js exists in Safari, since it's included in iframe
+	# HTML pages
+	if [ "$browser" = "safari" ]; then
+		echo ';' > "$browser_builddir/browser-polyfill.js"
+	fi
+	
 	# Copy google docs integration code
 	cp -r "$SRCDIR/zotero-google-docs-integration/src/connector" \
 		 "$browser_builddir/zotero-google-docs-integration"
+		 
+	# Copy locales
+	cp -r "$SRCDIR/locales" "$browser_builddir/_locales"
 	
 	# Copy node_modules libs
 	mkdir "$browser_builddir/lib"

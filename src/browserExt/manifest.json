@@ -3,6 +3,7 @@
 	"manifest_version": 2,
 	"version": "AUTOFILLED",
 	"description": "Save references to Zotero from your web browser",
+	"default_locale": "en",
 	"browser_action": {
 		"default_icon": {
 			"16": "images/treeitem-webpage-gray.png",
@@ -33,6 +34,7 @@
 	"web_accessible_resources": [
 		"images/*",
 		"progressWindow/progressWindow.html",
+		"modalPrompt/modalPrompt.html",
 		"test/data/journalArticle-single.html"
 	],
 	"content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",

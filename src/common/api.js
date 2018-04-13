@@ -56,7 +56,7 @@ Zotero.API = new function() {
 		
 		var oauthSimple = new OAuthSimple(config.OAUTH.ZOTERO.CLIENT_KEY,
 			config.OAUTH.ZOTERO.CLIENT_SECRET);
-		oauthSimple.setURL(config.REQUEST_URL);
+		oauthSimple.setURL(config.OAUTH.ZOTERO.REQUEST_URL);
 		oauthSimple.setAction("POST");
 		
 		let options = {
@@ -226,8 +226,9 @@ Zotero.API = new function() {
 			}
 			return Zotero.API.authorize().then(function() {
 				return Zotero.API.createItem(payload, false);
-			}, function() {
-				throw new Error("Authentication failed");
+			}, function(e) {
+				e.message = `Authentication failed: ${e.message}`;
+				throw e;
 			})
 		}
 		

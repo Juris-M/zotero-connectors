@@ -1,4 +1,5 @@
-/*
+<!DOCTYPE html>
+<!--
     ***** BEGIN LICENSE BLOCK *****
     
     Copyright © 2018 Center for History and New Media
@@ -21,14 +22,27 @@
     along with Zotero.  If not, see <http://www.gnu.org/licenses/>.
     
     ***** END LICENSE BLOCK *****
-*/
+-->
+<html lang="en">
+<head>
+	<meta charset="utf-8"/>
+	<base target="_blank">
+	
+	<script src="../browser-polyfill.js"></script>
+	<script src="../zotero_config.js"></script>
+	<script src="../zotero.js"></script>
+	<script src="../lib/react.js"></script>
+	<script src="../lib/react-dom.js"></script>
+	<script src="../lib/prop-types.js"></script>
+	<script src="../ui/ModalPrompt.js"></script>
+	<script src="../promise.js"></script>
+	<script src="../messages.js"></script>
+	<script src="../messaging_inject.js"></script>
+	<script src="modalPrompt.js"></script>
 
-window.onload = async function () {
-	var div = document.getElementById('progress-window');
-	Zotero.Messaging.init();
-	await Zotero.i18n.init();
-	ReactDOM.render(
-		React.createElement(Zotero.UI.ProgressWindow),
-		div
-	);
-};
+	<link rel="stylesheet" href="modalPrompt.css" />
+</head>
+<body>
+
+</body>
+</html>

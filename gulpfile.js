@@ -78,7 +78,9 @@ var injectInclude = [
 	'integration/connectorIntegration.js',
 	'messages.js',
 	'messaging_inject.js',
-	'inject/progressWindow_inject.js'
+	'inject/progressWindow_inject.js',
+	'inject/modalPrompt_inject.js',
+	'i18n.js'
 ];
 var injectIncludeLast;
 if (argv.p) {
@@ -101,6 +103,7 @@ var backgroundInclude = [
 	'node_modules.js',
 	'zotero_config.js',
 	'zotero.js',
+	'i18n.js',
 	'promise.js',
 	'prefs.js',
 	'api.js',
@@ -323,7 +326,8 @@ gulp.task('process-custom-scripts', function() {
 		'./src/common/zotero.js',
 		'./src/common/zotero_config.js',
 		'./src/common/test/**/*',
-		'./src/**/*.jsx'
+		'./src/**/*.jsx',
+		'./src/zotero-google-docs-integration/src/connector/**'
 	];
 	if (!argv.p) {
 		sources.push('./src/common/test/**/*.js');	
