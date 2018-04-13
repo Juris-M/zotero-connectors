@@ -24,7 +24,7 @@
 */
 
 const ZOTERO_CONFIG = {
-	REPOSITORY_URL: 'http://citationstylist.org/cgi-bin/',
+	REPOSITORY_URL: 'https://our.law.nagoya-u.ac.jp/updater/',
 	REPOSITORY_CHECK_INTERVAL: 86400, // 24 hours
 	REPOSITORY_RETRY_INTERVAL: 3600, // 1 hour
 	REPOSITORY_CHANNEL: 'trunk',
