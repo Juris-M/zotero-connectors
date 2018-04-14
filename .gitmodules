@@ -7,3 +7,6 @@
 	path = src/zotero-google-docs-integration
 	url = git://github.com/zotero/zotero-google-docs-integration.git
 	branch = master
+[submodule "deployer"]
+	path = deployer
+	url = git@github.com:Juris-M/deployer.git
