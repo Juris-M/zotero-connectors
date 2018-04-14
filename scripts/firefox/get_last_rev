@@ -18,4 +18,5 @@ fi
 channel=$1
 version=$2
 
-ssh $DEPLOY_HOST "test -e $MANIFEST_DEPLOY_PATH/$channel/lastrev-$version && cat $MANIFEST_DEPLOY_PATH/$channel/lastrev-$version" || echo -n 0
+DEPLOYER_TAG=${DEPLOYER_UPDATE_TAG/CHANNEL/$channel}
+node "$ROOT_DIR/deployer/index.js" -q -d "${DEPLOYER_TAG}lastrev-$version" || echo -n 0

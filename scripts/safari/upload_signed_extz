@@ -28,5 +28,5 @@ if ! openssl x509 -subject -in "$CERT_FILE" -noout | grep --quiet $SAFARI_DEVELO
 fi
 rm "$CERT_FILE"
 
-aws s3 cp --content-type application/octet-stream "$EXTZ" s3://${S3_PATH}Zotero_Connector-$VERSION.safariextz
+aws s3 cp --content-type application/octet-stream "$EXTZ" s3://${S3_PATH}Jurism_Connector-$VERSION.safariextz
 rm "$EXTZ"

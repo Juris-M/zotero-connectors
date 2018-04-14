@@ -44,6 +44,7 @@ if [ $current_version = 'null' ]; then
 	current_version="0.0.1"
 fi
 
+
 if [ $channel != "release" ]; then
 	rev=$($DIR/get_last_rev $channel $version)
 	((++rev))
@@ -76,7 +77,7 @@ sleep 1
 echo .
 sleep 1
 
-./build.sh -p bs -v "$version"
+./build.sh -p b -v "$version"
 
 if [ $channel != "release" ]; then
 	# Add Git commit hash to XPI files
@@ -84,8 +85,9 @@ if [ $channel != "release" ]; then
 	echo "$version+$hash" > $BUILD_DIR/browserExt/build_id
 fi
 
-FIREFOX_UPDATE_URL=${FIREFOX_UPDATE_URL/CHANNEL/$channel}
-cat "$BUILD_DIR/browserExt/manifest.json" | jq ".applications.gecko.update_url = \"$FIREFOX_UPDATE_URL\"" > $BUILD_DIR/browserExt/manifest.json-new
+UPDATE_URL=${FIREFOX_UPDATE_URL/CHANNEL/$channel}
+
+cat "$BUILD_DIR/browserExt/manifest.json" | jq ".applications.gecko.update_url = \"$UPDATE_URL\"" > $BUILD_DIR/browserExt/manifest.json-new
 mv $BUILD_DIR/browserExt/manifest.json-new $BUILD_DIR/browserExt/manifest.json
 
 echo

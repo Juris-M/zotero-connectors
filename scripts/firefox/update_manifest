@@ -29,9 +29,13 @@ def main():
         
         # Read in existing file
         with open(file) as f:
-            manifest = json.loads(f.read())
-        
-        updates = manifest['addons']['zotero@chnm.gmu.edu']['updates']
+            txt = f.read()
+            if not txt:
+                print("initializing manifest for " + channel + " channel")
+                txt = '{"addons":{"jurism@juris-m.github.io":{"updates":[]}}}'
+            manifest = json.loads(txt)
+
+        updates = manifest['addons']['jurism@juris-m.github.io']['updates']
         
         if any(u['version'] == version for u in updates):
             sys.stderr.write(
@@ -39,9 +43,8 @@ def main():
                 .format(version)
             )
             return 1
-        
-        url = ("https://download.zotero.org/connector/" +
-               "firefox/{0}/Zotero_Connector-{1}.xpi".format(channel, version))
+        url = ("https://juris-m.github.io/assets/connector/" +
+               "firefox/{0}/Jurism_Connector-{1}.xpi".format(channel, version))
         min_version = "51.0"
         updates.append({
             "version": version,
@@ -56,7 +59,7 @@ def main():
         updates = sorted(updates, key=lambda item: LooseVersion(item['version']))
         
         # Keep last 5 versions
-        manifest['addons']['zotero@chnm.gmu.edu']['updates'] = updates[-5:]
+        manifest['addons']['jurism@juris-m.github.io']['updates'] = updates[-5:]
         
         # Back up JSON file
         shutil.copy2(file, file + '.bak')

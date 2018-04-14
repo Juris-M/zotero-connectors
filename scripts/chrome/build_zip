@@ -5,7 +5,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "$DIR"/../.. && pwd )"
 BUILD_DIR="$( cd "$ROOT_DIR"/build && pwd )"
 
-rm -rf "$ROOT_DIR"/dist/Zotero_Connector*.zip
+rm -rf "$ROOT_DIR"/dist/Jurism_Connector*.zip
 
 rsync -a --delete "$BUILD_DIR/browserExt/" "$BUILD_DIR/chrome/"
 cd "$BUILD_DIR/chrome/"
@@ -15,7 +15,7 @@ cat manifest.json | jq '. |= del(.applications)' > manifest.json-tmp
 mv manifest.json-tmp manifest.json
 
 version=$(cat manifest.json | jq -r .version)
-filename="Zotero_Connector-$version.zip"
+filename="Jurism_Connector-$version.zip"
 
 zip -r ../$filename *
 mv ../$filename "$ROOT_DIR/dist"
