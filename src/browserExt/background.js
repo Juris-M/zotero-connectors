@@ -574,7 +574,7 @@ Zotero.Connector_Browser = new function() {
 		});
 		let withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
 			Zotero.Prefs.get('automaticSnapshots');
-		let title = `Save to Zotero (Web Page ${withSnapshot ? 'with' : 'without'} Snapshot)`;
+		let title = `Save to Juris-M (Web Page ${withSnapshot ? 'with' : 'without'} Snapshot)`;
 		browser.browserAction.setTitle({tabId: tab.id, title});
 	}
 	
@@ -585,7 +585,7 @@ Zotero.Connector_Browser = new function() {
 		});
 		browser.browserAction.setTitle({
 			tabId: tab.id,
-			title: "Save to Zotero (PDF)"
+			title: "Save to Juris-M (PDF)"
 		});
 	}
 	
@@ -628,7 +628,7 @@ Zotero.Connector_Browser = new function() {
 		var fns = [];
 		fns.push(() => browser.contextMenus.create({
 			id: "zotero-context-menu-webpage-withSnapshot-save",
-			title: "Save to Zotero (Web Page with Snapshot)",
+			title: "Save to Juris-M (Web Page with Snapshot)",
 			onclick: function (info, tab) {
 				Zotero.Connector_Browser.saveAsWebpage(tab, 0, true);
 			},
@@ -637,7 +637,7 @@ Zotero.Connector_Browser = new function() {
 		}));
 		fns.push(() => browser.contextMenus.create({
 			id: "zotero-context-menu-webpage-withoutSnapshot-save",
-			title: "Save to Zotero (Web Page without Snapshot)",
+			title: "Save to Juris-M (Web Page without Snapshot)",
 			onclick: function (info, tab) {
 				Zotero.Connector_Browser.saveAsWebpage(tab, 0, false);
 			},
@@ -656,7 +656,7 @@ Zotero.Connector_Browser = new function() {
 	function _showPDFContextMenuItem(parentID) {
 		browser.contextMenus.create({
 			id: "zotero-context-menu-pdf-save",
-			title: "Save to Zotero (PDF)",
+			title: "Save to Juris-M (PDF)",
 			onclick: function (info, tab) {
 				Zotero.Connector_Browser.saveAsWebpage(tab);
 			},
@@ -770,7 +770,7 @@ Zotero.Connector_Browser = new function() {
 	
 	function _getTranslatorLabel(translator) {
 		var translatorName = translator.label;
-		return "Save to Zotero (" + translatorName + ")";
+		return "Save to Juris-M (" + translatorName + ")";
 	}
 	
 	Zotero.Messaging.addMessageListener("selectDone", function(data) {

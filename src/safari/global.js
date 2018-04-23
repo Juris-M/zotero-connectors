@@ -320,15 +320,15 @@ Zotero.Connector_Browser = new function() {
 		var withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
 			Zotero.Prefs.get('automaticSnapshots');
 		if (withSnapshot) {
-			_zoteroButton.toolTip = "Save to Zotero (Web Page with Snapshot)";
+			_zoteroButton.toolTip = "Save to Juris-M (Web Page with Snapshot)";
 		} else {
-			_zoteroButton.toolTip = "Save to Zotero (Web Page without Snapshot)";
+			_zoteroButton.toolTip = "Save to Juris-M (Web Page without Snapshot)";
 		}
 	}
 
 	this._showPDFIcon = function() {
 		_zoteroButton.image = safari.extension.baseURI + "images/toolbar/pdf.png";
-		_zoteroButton.toolTip = "Save to Zotero (PDF)";
+		_zoteroButton.toolTip = "Save to Juris-M (PDF)";
 	}
 
 	function _getTranslatorLabel(translator) {
@@ -337,7 +337,7 @@ Zotero.Connector_Browser = new function() {
 			translatorName += " via Zotero Standalone";
 		}
 
-		return "Save to Zotero (" + translatorName + ")";
+		return "Save to Juris-M (" + translatorName + ")";
 	}
 }
 

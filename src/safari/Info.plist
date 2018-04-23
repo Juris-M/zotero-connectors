@@ -54,13 +54,13 @@
 				<key>Image</key>
 				<string>images/toolbar/zotero-new-z-16px.png</string>
 				<key>Label</key>
-				<string>Save to Zotero</string>
+				<string>Save to Juris-M</string>
 				<key>Palette Label</key>
 				<string>Zotero</string>
 				<key>Popover</key>
 				<string>zotero-translatorSelector</string>
 				<key>Tool Tip</key>
-				<string>Save to Zotero</string>
+				<string>Save to Juris-M</string>
 			</dict>
 		</array>
 	</dict>

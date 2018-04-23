@@ -10,7 +10,7 @@
 			"24": "images/treeitem-webpage-gray.png",
 			"32": "images/treeitem-webpage-gray.png"
 		},
-		"default_title": "Save to Zotero"
+		"default_title": "Save to Juris-M"
 	},
 	"permissions": ["http://*/*", "https://*/*", "tabs", "contextMenus", "cookies", 
 		"webRequest", "webRequestBlocking", "webNavigation", "storage"],
