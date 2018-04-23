@@ -286,18 +286,27 @@ Zotero.Inject = new function() {
 		});
 	};
 	
-	this.firstSaveToServerPrompt = function() {
-		return this.confirm({
-			button1Text: "Try Again",
-			button2Text: "Cancel",
-			button3Text: "Enable Saving to Online Library",
-			title: "Is Juris-M Running?",
-			message: `
-				The Juris-M Connector was unable to communicate with the Juris-M desktop application. The Connector can save some pages directly to your zotero.org account, but for best results you should make sure Juris-M is open before attempting to save.<br/><br/>
-				You can <a href="https://juris-m.github.io/downloads/">download Juris-M</a> or <a href="https://www.zotero.org/support/kb/connector_zotero_unavailable">troubleshoot the connection</a> if necessary.
-			`
-		}).then(function(result) {
-			switch (result.button) {
+	this.firstSaveToServerPrompt = async function() {
+		var clientName = ZOTERO_CONFIG.CLIENT_NAME;
+		
+		var result = await this.confirm({
+			button1Text: Zotero.getString('general_tryAgain'),
+			button2Text: Zotero.getString('general_cancel'),
+			button3Text: Zotero.getString('error_connection_enableSavingToOnlineLibrary'),
+			title: Zotero.getString('error_connection_isAppRunning', clientName),
+			message: Zotero.getString(
+					'error_connection_save',
+					[
+						Zotero.getString('appConnector', clientName),
+						clientName,
+						ZOTERO_CONFIG.DOMAIN_NAME
+					]
+				)
+				+ '<br /><br />'
+				+ Zotero.Inject.getConnectionErrorTroubleshootingString()
+		});
+		
+		switch (result.button) {
 			case 1:
 				return 'retry';
 			
@@ -306,8 +315,19 @@ Zotero.Inject = new function() {
 			
 			default:
 				return 'cancel';
-			}
-		});
+		}
+	};
+	
+	
+	this.getConnectionErrorTroubleshootingString = function () {
+		var clientName = ZOTERO_CONFIG.CLIENT_NAME;
+		var connectorName = Zotero.getString('appConnector', ZOTERO_CONFIG.CLIENT_NAME);
+		var downloadLink = 'https://www.zotero.org/download/';
+		var troubleshootLink = 'https://www.zotero.org/support/kb/connector_zotero_unavailable';
+		return Zotero.getString(
+			'error_connection_downloadOrTroubleshoot',
+			[downloadLink, clientName, troubleshootLink]
+		);
 	};
 	
 	/**
@@ -444,7 +464,7 @@ Zotero.Inject = new function() {
 		);
 		try {
 			result = await Zotero.Connector.callMethodWithCookies("saveSnapshot", data);
-		
+			Zotero.Messaging.sendMessage("progressWindow.sessionCreated", { sessionID });
 			Zotero.Messaging.sendMessage(
 				"progressWindow.itemProgress",
 				[
@@ -498,7 +518,7 @@ Zotero.Inject = new function() {
 	
 	this.addKeyboardShortcut = function(eventDescriptor, fn, elem) {
 		elem = elem || document;
-		elem.addEventListener('keyup', function ZoteroKeyboardShortcut(event) {
+		elem.addEventListener('keydown', function ZoteroKeyboardShortcut(event) {
 			for (let prop in eventDescriptor) {
 				if (event[prop] != eventDescriptor[prop]) return;
 			}
