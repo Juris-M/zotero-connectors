@@ -528,10 +528,10 @@ Zotero.Connector_Browser = new function() {
 			var icon, title;
 			if (isOnline) {
 				icon = "images/zotero-new-z-16px.png";
-				title = "Zotero is Online";
+				title = "Juris-M is Online";
 			} else {
 				icon = "images/zotero-z-16px-offline.png";
-				title = "Zotero is Offline";
+				title = "Juris-M is Offline";
 			}
 			browser.browserAction.setIcon({
 				tabId:tabID,

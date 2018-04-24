@@ -300,10 +300,10 @@ Zotero.Connector_Browser = new function() {
 		Zotero.Connector.checkIsOnline().then(function(isOnline) {
 			if (isOnline) {
 				_zoteroButton.image = safari.extension.baseURI+"images/toolbar/zotero-new-z-16px.png";
-				_zoteroButton.toolTip = "Zotero is Online";
+				_zoteroButton.toolTip = "Juris-M is Online";
 			} else {
 				_zoteroButton.image = safari.extension.baseURI+"images/toolbar/zotero-z-16px-offline.png";
-				_zoteroButton.toolTip = "Zotero is Offline";
+				_zoteroButton.toolTip = "Juris-M is Offline";
 			}
 		});
 	}
