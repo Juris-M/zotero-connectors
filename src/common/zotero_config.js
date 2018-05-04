@@ -32,7 +32,7 @@ const ZOTERO_CONFIG = {
 	REPOSITORY_CHANNEL: 'trunk',
 	BASE_URI: 'https://zotero.org/',
 	WWW_BASE_URL: 'https://www.zotero.org/',
-	CLIENT_DOWNLOAD_URL: 'https://juris-m.github.io/downloads',
+	CLIENT_DOWNLOAD_URL: 'https://github.com/Juris-M/assets/releases/download',
 	API_URL: 'https://api.zotero.org/',
 	CONNECTOR_SERVER_URL: "http://127.0.0.1:24119/",
 	GOOGLE_DOCS_API_URL: "https://script.googleapis.com/v1/scripts/MLcaOTd_PUYyG7cBwJxdOKvYlDj38wupO:run",
