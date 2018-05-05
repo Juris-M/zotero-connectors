@@ -322,7 +322,7 @@ Zotero.Inject = new function() {
 	this.getConnectionErrorTroubleshootingString = function () {
 		var clientName = ZOTERO_CONFIG.CLIENT_NAME;
 		var connectorName = Zotero.getString('appConnector', ZOTERO_CONFIG.CLIENT_NAME);
-		var downloadLink = 'https://www.zotero.org/download/';
+		var downloadLink = ZOTERO_CONFIG.CLIENT_DOWNLOAD_URL;
 		var troubleshootLink = 'https://www.zotero.org/support/kb/connector_zotero_unavailable';
 		return Zotero.getString(
 			'error_connection_downloadOrTroubleshoot',
