@@ -39,7 +39,7 @@ var Zotero_Preferences = {
 	pane: {},
 	content: {},
 	visiblePaneName: null,
-	init: function() {
+	init: async function() {
 		Zotero.isPreferences = true;
 		Zotero.Messaging.init();
 		
@@ -67,6 +67,12 @@ var Zotero_Preferences = {
 		
 		Zotero_Preferences.General.init();
 		Zotero_Preferences.Advanced.init();
+		
+		var checkboxes = document.querySelectorAll('[data-pref]');
+		for (let checkbox of checkboxes) {
+			checkbox.onchange = Zotero_Preferences.onPrefCheckboxChange;
+			checkbox.checked = await Zotero.Prefs.getAsync(checkbox.dataset.pref);
+		}
 
 		Zotero.Prefs.loadNamespace('proxies').then(function() {
 			Zotero_Preferences.Proxies.init();
@@ -75,6 +81,11 @@ var Zotero_Preferences = {
 		Zotero.initDeferred.resolve();
 		Zotero_Preferences.refreshData();
 		window.setInterval(() => Zotero_Preferences.refreshData(), 1000);
+		
+		// Hide Google Docs for non-beta users
+		if (!Zotero.version.includes('beta') && !Zotero.version.includes('999')) {
+			document.getElementById('google-docs-pref').style.display = 'none';
+		}
 	},
 
 	/**
@@ -82,6 +93,10 @@ var Zotero_Preferences = {
 	 */
 	onPaneClick: function(e) {
 		Zotero_Preferences.selectPane(e.currentTarget.id.substr(5));
+	},
+	
+	onPrefCheckboxChange: function(event) {
+		Zotero.Prefs.set(event.target.dataset.pref, event.target.checked);
 	},
 	
 	/**
@@ -138,17 +153,7 @@ Zotero_Preferences.General = {
 		document.getElementById("general-button-authorize").onclick = 
 			document.getElementById("general-button-reauthorize").onclick = Zotero_Preferences.General.authorize;
 		document.getElementById("general-button-clear-credentials").onclick = Zotero_Preferences.General.clearCredentials;
-		document.getElementById("general-checkbox-automaticSnapshots").onchange =
-			function() { Zotero.Prefs.set('automaticSnapshots', this.checked) };
-		document.getElementById("general-checkbox-downloadAssociatedFiles").onchange =
-			function() { Zotero.Prefs.set('downloadAssociatedFiles', this.checked) };
-		
-		Zotero.Prefs.getAsync("downloadAssociatedFiles").then(function(status) {
-			document.getElementById('general-checkbox-downloadAssociatedFiles').checked = !!status;
-		});
-		Zotero.Prefs.getAsync("automaticSnapshots").then(function(status) {
-			document.getElementById('general-checkbox-automaticSnapshots').checked = !!status;
-		});
+
 		Zotero.API.getUserInfo().then(Zotero_Preferences.General.updateAuthorization);
 
 	},
@@ -654,7 +659,7 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 			<div className="group" style={{marginTop: "10px"}}>
 				<p style={{display: "flex", alignItems: "center", flexWrap: "wrap"}}>
 					<label style={{visibility: multiHost ? null : 'hidden'}}><input type="checkbox" name="autoAssociate" onChange={this.handleCheckboxChange} checked={currentProxy.autoAssociate}/>&nbsp;Automatically associate new hosts</label><br/>
-					<label><input type="checkbox" name="dotsToHyphens" onChange={this.handleCheckboxChange} checked={currentProxy.dotsToHyphens}/>&nbsp;Automatically convert hyphens to dots in proxied hostnames</label><br/>
+					<label><input type="checkbox" name="dotsToHyphens" onChange={this.handleCheckboxChange} checked={currentProxy.dotsToHyphens}/>&nbsp;Automatically convert between dots and hyphens in proxied hostnames</label><br/>
 				</p>
 				<p style={{display: "flex", alignItems: "center"}}>
 					<label style={{alignSelf: "center", marginRight: "5px"}}>Scheme: </label>

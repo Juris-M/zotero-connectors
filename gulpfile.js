@@ -247,10 +247,22 @@ function processFile() {
 		// Replace contents
 		switch (basename) {
 			case 'zotero_config.js':
-				if (!argv.p) {
-					file.contents = Buffer.from(file.contents.toString()
-						.replace('GOOGLE_DOCS_DEV_MODE: false', 'GOOGLE_DOCS_DEV_MODE: true'));
+				var contents = file.contents.toString();
+				if (process.env.ZOTERO_GOOGLE_DOCS_DEV_MODE) {
+					contents = contents.replace('GOOGLE_DOCS_DEV_MODE: false',
+						'GOOGLE_DOCS_DEV_MODE: true');
 				}
+				if (process.env.ZOTERO_GOOGLE_DOCS_API_URL) {
+					contents = contents.replace(/GOOGLE_DOCS_API_URL: [^,]*/,
+						`GOOGLE_DOCS_API_URL: "${process.env.ZOTERO_GOOGLE_DOCS_API_URL}"`);
+				}
+				if (process.env.ZOTERO_GOOGLE_DOCS_OAUTH_CLIENT_KEY) {
+					contents = contents.replace(
+						'222339878061-13uqre19u268oo9pdapuaifklbu8d6js.apps.googleusercontent.com',
+						process.env.ZOTERO_GOOGLE_DOCS_OAUTH_CLIENT_KEY
+					);
+				}
+				file.contents = Buffer.from(contents);
 			case 'zotero.js':
 				if (!argv.p) {
 					file.contents = Buffer.from(file.contents.toString()
@@ -275,6 +287,7 @@ function processFile() {
 					file.contents.toString(), "<!--SCRIPTS-->", backgroundInclude));
 				break;
 			case 'preferences.html':
+			case 'progressWindow.html':
 				file.contents = Buffer.from(file.contents.toString()
 					.replace(/<!--BEGIN DEBUG-->([\s\S]*?)<!--END DEBUG-->/g, argv.p ? '' : '$1'));
 				break;
@@ -330,6 +343,7 @@ gulp.task('process-custom-scripts', function() {
 		'./src/safari/Info.plist',
 		'./src/common/node_modules.js',
 		'./src/common/preferences/preferences.html',
+		'./src/common/progressWindow/progressWindow.html',
 		'./src/common/zotero.js',
 		'./src/common/zotero_config.js',
 		'./src/common/test/**/*',

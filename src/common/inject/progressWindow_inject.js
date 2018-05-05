@@ -53,12 +53,13 @@ if (isTopWindow) {
 	var updatingSession;
 	var nextSessionUpdateData;
 	
+	var isReadOnly = false;
 	var syncDelayIntervalID;
 	var insideIframe = false;
 	var frameSrc;
 	var frameIsHidden = false;
 	if (Zotero.isSafari) {
-		frameSrc = safari.extension.baseURI.toLowerCase() + 'progressWindow/progressWindow.html';
+		frameSrc = safari.extension.baseURI + 'progressWindow/progressWindow.html';
 	}
 	else {
 		frameSrc = browser.extension.getURL('progressWindow/progressWindow.html');
@@ -76,17 +77,19 @@ if (isTopWindow) {
 	}
 	
 	function changeHeadline() {
+		isReadOnly = arguments.length <= 2;
 		addEvent("changeHeadline", Array.from(arguments));
 	}
 	
 	function makeReadOnly() {
+		isReadOnly = true;
 		addEvent("makeReadOnly", [lastSuccessfulTarget]);
 	}
 	
 	/**
 	 * Get selected collection and collections list from client and update popup
 	 */
-	async function setHeadlineFromClient(prefix) {
+	async function updateFromClient(prefix) {
 		try {
 			var response = await Zotero.Connector.callMethod("getSelectedCollection", {})
 		}
@@ -96,11 +99,20 @@ if (isTopWindow) {
 			return;
 		}
 		
-		// TODO: Change client to default to My Library root
-		if (response.targets && response.libraryEditable === false) {
-			let target = response.targets[0];
-			response.id = target.id;
-			response.name = target.name;
+		// If we're reshowing the current session's popup, override the selected location with the
+		// last successful tarGet, since the selected collection in the client might have changed
+		if (lastSuccessfulTarget) {
+			response.id = lastSuccessfulTarget.id;
+			response.name = lastSuccessfulTarget.name;
+			response.libraryEditable = true;
+		}
+		
+		// Disable target selector for read-only library (which normally shouldn't happen,
+		// because the client switches automatically to My Library)
+		if (response.libraryEditable === false) {
+			response.targets = undefined;
+			addError("collectionNotEditable");
+			startCloseTimer(8000);
 		}
 		
 		var id;
@@ -119,22 +131,25 @@ if (isTopWindow) {
 		if (!prefix) {
 			prefix = Zotero.getString('progressWindow_savingTo');
 		}
-		var target = lastSuccessfulTarget = {
+		var target = {
 			id,
 			name: response.name
 		};
-		// Make sure libraries have levels
-		for (let row of response.targets) {
-			if (!row.level) {
-				row.level = 0;
+		
+		if (response.libraryEditable) {
+			lastSuccessfulTarget = target;
+		}
+		
+		// TEMP: Make sure libraries have levels (added to client in 5.0.46)
+		if (response.targets) {
+			for (let row of response.targets) {
+				if (!row.level) {
+					row.level = 0;
+				}
 			}
 		}
+		
 		changeHeadline(prefix, target, response.targets);
-		if (!response.targets && response.libraryEditable === false) {
-			// TODO: Update
-			addError("collectionNotEditable");
-			startCloseTimer(8000);
-		}
 	}
 	
 	function updateProgress() {
@@ -287,7 +302,7 @@ if (isTopWindow) {
 				return handleUpdated(data);
 			}
 			
-			// Keep track of last successful target to show on failure
+			// Keep track of last successful target to show on reopen and failure
 			lastSuccessfulTarget = data.target;
 		};
 		
@@ -331,8 +346,6 @@ if (isTopWindow) {
 	 * @returns {Promise<iframe>}
 	 */
 	async function showFrame() {
-		stopCloseTimer();
-		
 		var iframe = document.getElementById(frameID);
 		if (!iframe) {
 			iframe = await initFrame();
@@ -350,11 +363,10 @@ if (isTopWindow) {
 			clearInterval(syncDelayIntervalID);
 		}
 		syncDelayIntervalID = setInterval(() => {
-			// Don't prevent syncing when tab isn't visible.
-			// See note in ProgressWindow.jsx::handleVisibilityChange().
-			if (document.hidden) {
-				return;
-			}
+			// Don't prevent syncing when read-only or when tab isn't visible.
+			// See note in ProgressWindow.jsx::handleVisibilityChange() for latter.
+			if (isReadOnly || document.hidden) return;
+			
 			Zotero.Connector.callMethod("delaySync", {});
 		}, 7500);
 		
@@ -375,12 +387,19 @@ if (isTopWindow) {
 			await Zotero.Promise.delay(delay);
 		}
 		
-		// If session has changed, reset state before reopening popup
-		if (currentSessionID && currentSessionID != sessionID) {
-			resetFrame();
-			// Disable closing on mouseleave until save finishes. (This is disabled initially
-			// but is enabled when a save finishes, so we have to redisable it for a new session.)
-			closeOnLeave = false;
+		// Reopening existing popup
+		if (currentSessionID) {
+			// If session has changed, reset state before reopening
+			if (currentSessionID != sessionID) {
+				resetFrame();
+				// Disable closing on mouseleave until save finishes. (This is disabled initially
+				// but is enabled when a save finishes, so we have to redisable it for a new session.)
+				closeOnLeave = false;
+			}
+			// If not a new session, start close timer
+			else {
+				startCloseTimer(5000);
+			}
 		}
 		currentSessionID = sessionID;
 		
@@ -390,11 +409,12 @@ if (isTopWindow) {
 			changeHeadline(headline);
 		}
 		else {
-			await setHeadlineFromClient(headline);
+			await updateFromClient(headline);
 		}
 	});
 	
 	/**
+	 * @param {String} sessionID
 	 * @param {Integer} id
 	 * @param {String} iconSrc
 	 * @param {String} title
@@ -402,14 +422,9 @@ if (isTopWindow) {
 	 * @param {Integer|false} progress
 	 */
 	Zotero.Messaging.addMessageListener("progressWindow.itemProgress", (data) => {
-		var id = data[0];
-		var data = {
-			iconSrc: data[1],
-			title: data[2],
-			parentItem: data[3],
-			progress: data[4] // false === error
-		};
-		updateProgress(id, data);
+		// Skip progress updates for a previous session
+		if (data.sessionID && data.sessionID != currentSessionID) return;
+		updateProgress(data.id, data);
 	});
 	
 	Zotero.Messaging.addMessageListener("progressWindow.close", function () {

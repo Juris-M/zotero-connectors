@@ -125,17 +125,14 @@ Zotero.Translate.ItemSaver.prototype = {
 		}.bind(this), function(e) {
 			if (e.status == 0) {
 				return this._saveToServer(items, attachmentCallback);
-			} else if (e.value && e.value.libraryEditable === false) {
-				// This is mostly a hack for now. We'll have a better SSE based solution soon.
-				return new Zotero.Promise(() => 0);
-  			}
+			}
   			throw e;
 		}.bind(this));
 	},
 	
 	_processItems: function(items) {
 		var saveOptions = Zotero.Inject.sessionDetails.saveOptions;
-		if (saveOptions.note && items.length == 1) {
+		if (saveOptions && saveOptions.note && items.length == 1) {
 			if (items[0].notes) {
 				items[0].notes.push({note: saveOptions.note})
 			} else {
