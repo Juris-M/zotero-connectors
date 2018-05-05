@@ -43,8 +43,8 @@ def main():
                 .format(version)
             )
             return 1
-        url = ("https://juris-m.github.io/assets/connector/" +
-               "firefox/{0}/Jurism_Connector-{1}.xpi".format(channel, version))
+        url = ("https://github.com/Juris-M/assets/releases/download/connector/" +
+               "firefox/plugin/{0}/Jurism_Connector-{1}.xpi".format(channel, version))
         min_version = "51.0"
         updates.append({
             "version": version,
