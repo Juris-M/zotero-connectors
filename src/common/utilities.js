@@ -72,7 +72,9 @@ Zotero.Utilities.itemToAPIJSON = function(item) {
 		item.itemType = "webpage";
 		typeID = Zotero.ItemTypes.getID(item.itemType);
 	}
-	
+
+	item = Zotero.Utilities.encodeMlzContent(item);
+
 	var fieldID, itemFieldID;
 	for(var field in item) {
 		if(field === "complete" || field === "itemID" || field === "attachments"
