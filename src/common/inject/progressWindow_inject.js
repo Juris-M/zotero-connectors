@@ -35,7 +35,7 @@ if(window.top) {
 	} catch(e) {};
 }
 
-if (isTopWindow) {
+if (isTopWindow || Zotero.isBookmarklet) {
 	//
 	// Progress window initialization
 	//
@@ -46,7 +46,10 @@ if (isTopWindow) {
 	var closeOnLeave = false;
 	var lastSuccessfulTarget;
 	var frameReadyDeferred = Zotero.Promise.defer();
+	var frameInitialized;
 	var closeTimeoutID;
+	window.Zotero.progressWindowReady = frameReadyDeferred.promise;
+	frameReadyDeferred.promise.then(() => frameInitialized = true);
 	
 	var currentSessionID;
 	var createdSessions = new Set();
@@ -58,7 +61,10 @@ if (isTopWindow) {
 	var insideIframe = false;
 	var frameSrc;
 	var frameIsHidden = false;
-	if (Zotero.isSafari) {
+	if (Zotero.isBookmarklet) {
+		frameSrc = ZOTERO_CONFIG.BOOKMARKLET_URL + 'progressWindow/progressWindow.html';
+	}
+	else if (Zotero.isSafari) {
 		frameSrc = safari.extension.baseURI + 'progressWindow/progressWindow.html';
 	}
 	else {
@@ -67,12 +73,35 @@ if (isTopWindow) {
 	var scrollX;
 	var scrollY;
 	
+	async function sendMessage(name, data = {}) {
+		if (!Zotero.isBookmarklet) {
+			return Zotero.Messaging.sendMessage(name, data, null, null);
+		}
+		var frame = await frameReadyDeferred.promise;
+		if (frame) {
+			return frame.contentWindow.postMessage([name, data], "*");
+		} else {
+			throw new Error("Attempting to message progressWindow frame before it has been loaded");
+		}
+	}
+
+	function addMessageListener(name, handler) {
+		if (!Zotero.isBookmarklet) {
+			return Zotero.Messaging.addMessageListener(name, handler);
+		}
+		window.top.addEventListener('message', function(event) {
+			if (event.data && event.data[0] == name) {
+				handler(event.data[1]);
+			}
+		});
+	}
+	
 	// The progress window component is initialized asynchronously, so queue updates and send them
 	// to the iframe once the component is ready
 	function addEvent(name, data) {
 		frameReadyDeferred.promise.then(function() {
 			// frameId=null - send message to all frames
-			Zotero.Messaging.sendMessage(`progressWindowIframe.${name}`, data, null, null);
+			sendMessage(`progressWindowIframe.${name}`, data);
 		});
 	}
 	
@@ -113,6 +142,7 @@ if (isTopWindow) {
 			response.targets = undefined;
 			addError("collectionNotEditable");
 			startCloseTimer(8000);
+			return;
 		}
 		
 		var id;
@@ -152,10 +182,6 @@ if (isTopWindow) {
 		changeHeadline(prefix, target, response.targets);
 	}
 	
-	function updateProgress() {
-		addEvent("updateProgress", Array.from(arguments));
-	}
-	
 	async function addError() {
 		await showFrame();
 		addEvent("addError", Array.from(arguments));
@@ -164,7 +190,11 @@ if (isTopWindow) {
 	function hideFrame() {
 		insideIframe = false;
 		
-		var frame = document.getElementById(frameID);
+		if (Zotero.isBookmarklet) {
+			var frame = window.top.document.getElementById(frameID);
+		} else {
+			var frame = document.getElementById(frameID);
+		}
 		if (frame) {
 			frame.style.display = 'none';
 			addEvent("hidden");
@@ -181,9 +211,9 @@ if (isTopWindow) {
 		addEvent('reset');
 	}
 	
-	function destroyFrame() {
+	async function destroyFrame() {
 		stopCloseTimer();
-		var frame = document.getElementById(frameID);
+		var frame = await frameReadyDeferred.promise;
 		document.body.removeChild(frame);
 		frameReadyDeferred = Zotero.Promise.defer();
 	}
@@ -200,7 +230,7 @@ if (isTopWindow) {
 	function handleMouseLeave() {
 		insideIframe = false;
 		if (closeOnLeave) {
-			startCloseTimer();
+			startCloseTimer(2500);
 		}
 	}
 	
@@ -208,7 +238,7 @@ if (isTopWindow) {
 		// Don't start the timer if the mouse is over the popup
 		if (insideIframe) return;
 		
-		if (!delay) delay = 2500;
+		if (!delay) delay = 5000;
 		stopCloseTimer();
 		closeTimeoutID = setTimeout(hideFrame, delay);
 	}
@@ -229,13 +259,14 @@ if (isTopWindow) {
 			top: '15px',
 			right: '8px',
 			width: '351px',
+			maxWidth: '95%',
 			height: '120px',
 			border: "none",
 			zIndex: 2147483647,
 			display: 'none'
 		};
 		for (let i in style) iframe.style[i] = style[i];
-		document.body.appendChild(iframe);
+		window.top.document.body.appendChild(iframe);
 	
 		// Keep track of clicks on the window so that when the iframe document is blurred we can
 		// distinguish between a click on the document and switching to another window
@@ -258,12 +289,12 @@ if (isTopWindow) {
 		//
 		// Handle messages from the progress window iframe
 		//
-		Zotero.Messaging.addMessageListener('progressWindowIframe.registered', function() {
-			frameReadyDeferred.resolve();
+		addMessageListener('progressWindowIframe.registered', function() {
+			frameReadyDeferred.resolve(iframe);
 		});
 		
 		// Adjust iframe height when inner document is resized
-		Zotero.Messaging.addMessageListener('progressWindowIframe.resized', function(data) {
+		addMessageListener('progressWindowIframe.resized', function(data) {
 			iframe.style.height = (data.height + 33) + "px";
 		});
 		
@@ -284,6 +315,8 @@ if (isTopWindow) {
 						sessionID: currentSessionID,
 						target: data.target.id,
 						tags: data.tags
+							// TEMP: Avoid crash on leading/trailing comma pre-5.0.57
+							? data.tags.replace(/(^,|,$)/g, '') : data.tags
 					}
 				);
 			}
@@ -318,23 +351,26 @@ if (isTopWindow) {
 		});
 		
 		// Sent by the progress window when changes are made in the target selector
-		Zotero.Messaging.addMessageListener('progressWindowIframe.updated', handleUpdated);
+		addMessageListener('progressWindowIframe.updated', handleUpdated);
 		
 		// Keep track of when the mouse is over the popup, for various purposes
-		Zotero.Messaging.addMessageListener('progressWindowIframe.mouseenter', handleMouseEnter);
-		Zotero.Messaging.addMessageListener('progressWindowIframe.mouseleave', handleMouseLeave);
+		addMessageListener('progressWindowIframe.mouseenter', handleMouseEnter);
+		addMessageListener('progressWindowIframe.mouseleave', handleMouseLeave);
 
 		// Hide iframe if it loses focus and the user recently clicked on the main page
 		// (i.e., they didn't just switch to another window)
-		Zotero.Messaging.addMessageListener('progressWindowIframe.blurred', async function() {
+		addMessageListener('progressWindowIframe.blurred', async function() {
 			await Zotero.Promise.delay(150);
 			if (lastClick > new Date() - 500) {
 				hideFrame();
 			}
 		});
 		
-		Zotero.Messaging.addMessageListener('progressWindowIframe.close', function() {
+		addMessageListener('progressWindowIframe.close', function() {
 			hideFrame();
+			if (!Zotero.isBookmarklet) {
+				window.focus();
+			}
 		});
 
 		await frameReadyDeferred.promise;
@@ -346,9 +382,11 @@ if (isTopWindow) {
 	 * @returns {Promise<iframe>}
 	 */
 	async function showFrame() {
-		var iframe = document.getElementById(frameID);
-		if (!iframe) {
+		let iframe
+		if (!frameInitialized) {
 			iframe = await initFrame();
+		} else {
+			iframe = await frameReadyDeferred.promise;
 		}
 		// If the frame has been hidden since we started to open it, don't make it visible
 		if (!frameIsHidden) {
@@ -396,10 +434,6 @@ if (isTopWindow) {
 				// but is enabled when a save finishes, so we have to redisable it for a new session.)
 				closeOnLeave = false;
 			}
-			// If not a new session, start close timer
-			else {
-				startCloseTimer(5000);
-			}
 		}
 		currentSessionID = sessionID;
 		
@@ -424,7 +458,8 @@ if (isTopWindow) {
 	Zotero.Messaging.addMessageListener("progressWindow.itemProgress", (data) => {
 		// Skip progress updates for a previous session
 		if (data.sessionID && data.sessionID != currentSessionID) return;
-		updateProgress(data.id, data);
+		// Keep progress window open as long as we're receiving updates
+		addEvent("updateProgress", [data.id, data]);
 	});
 	
 	Zotero.Messaging.addMessageListener("progressWindow.close", function () {
@@ -436,6 +471,14 @@ if (isTopWindow) {
 		hideFrame();
 	});
 	
+	Zotero.Messaging.addMessageListener("progressWindow.setSession", function (sessionID) {
+		currentSessionID = sessionID;
+	});
+
+	Zotero.Messaging.addMessageListener("progressWindow.reopen", function () {
+		showFrame();
+	});
+	
 	Zotero.Messaging.addMessageListener("progressWindow.done", (returnValue) => {
 		closeOnLeave = true;
 		if (Zotero.isBrowserExt
@@ -445,7 +488,7 @@ if (isTopWindow) {
 			}, 1000);
 		}
 		else if (returnValue[0]) {
-			startCloseTimer(2500);
+			startCloseTimer(3000);
 		}
 		else {
 			addError(returnValue[1] || "translationError");

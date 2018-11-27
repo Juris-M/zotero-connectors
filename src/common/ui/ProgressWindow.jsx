@@ -69,7 +69,6 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		
 		this.nArcs = 20;
 		
-		var translatorIssuesURL = "https://www.zotero.org/support/troubleshooting_translator_issues";
 		this.text = {
 			more: Zotero.getString('general_more'),
 			done: Zotero.getString('general_done'),
@@ -111,11 +110,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	
 	componentDidMount() {
 		for (let evt of ['changeHeadline', 'makeReadOnly', 'updateProgress', 'addError']) {
-			Zotero.Messaging.addMessageListener(`progressWindowIframe.${evt}`, (data) => this[evt](...data));
+			this.addMessageListener(`progressWindowIframe.${evt}`, (data) => this[evt](...data));
 		}
-		Zotero.Messaging.addMessageListener('progressWindowIframe.shown', this.handleShown.bind(this));
-		Zotero.Messaging.addMessageListener('progressWindowIframe.hidden', this.handleHidden.bind(this));
-		Zotero.Messaging.addMessageListener('progressWindowIframe.reset', () => this.setState(this.getInitialState()));
+		this.addMessageListener('progressWindowIframe.shown', this.handleShown.bind(this));
+		this.addMessageListener('progressWindowIframe.hidden', this.handleHidden.bind(this));
+		this.addMessageListener('progressWindowIframe.reset', () => this.setState(this.getInitialState()));
 		
 		document.addEventListener('visibilitychange', this.handleVisibilityChange.bind(this));
 		
@@ -233,6 +232,7 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 				newState.itemProgress.set(id, p);
 				p.order = prevState.itemProgress.size - 1;
 			}
+			p.title = title;
 			if (iconSrc) {
 				p.iconSrc = iconSrc;
 			}
@@ -241,6 +241,10 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 			}
 			if (progress === false) {
 				p.failed = true;
+			}
+			// Just remove the line if an optional PDF wasn't found
+			else if (progress == -1) {
+				newState.itemProgress.delete(id);
 			}
 			else if (typeof progress == 'number') {
 				p.percentage = progress;
@@ -264,8 +268,22 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	//
 	// Messaging
 	//
-	sendMessage(event, data = {}) {
-		Zotero.Messaging.sendMessage(`progressWindowIframe.${event}`, data);
+	sendMessage(name, data = {}) {
+		if (!Zotero.isBookmarklet) {
+			return Zotero.Messaging.sendMessage(`progressWindowIframe.${name}`, data);
+		}
+		return window.top.postMessage([`progressWindowIframe.${name}`, data], "*");
+	}
+
+	addMessageListener(name, handler) {
+		if (!Zotero.isBookmarklet) {
+			return Zotero.Messaging.addMessageListener(name, handler);
+		}
+		window.addEventListener('message', function(event) {
+			if (event.data && event.data[0] == name) {
+				handler(event.data[1]);
+			}
+		});
 	}
 	
 	sendUpdate() {
@@ -413,6 +431,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		if (event.key == 'Escape') {
 			this.handleDone();
 		}
+		// Consider arrow-key navigation of the drop-down equivalent to clicking in the popup
+		else {
+			this.sendMessage('mouseenter');
+			this.handleUserInteraction();
+		}
 	}
 	
 	handleKeyPress(event) {
@@ -420,6 +443,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		
 		if (event.key == 'Enter') {
 			this.handleDone();
+		}
+		// Consider keyboard navigation of the drop-down equivalent to clicking in the popup
+		else {
+			this.sendMessage('mouseenter');
+			this.handleUserInteraction();
 		}
 	}
 	

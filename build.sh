@@ -26,23 +26,6 @@ if [ -f "$CWD/config.sh" ]; then
 	. "$CWD/config.sh"
 fi
 
-function explorerify {
-	FROM="$1"
-	TO="$2"
-	
-	# const -> var
-	perl -pe "s/\bconst /var /" "$FROM" > "$TO"
-	
-	# a.indexOf(b) -> indexOf(a,b)
-	perl -000 -pi -e 's/((?:[\w.]+|\[[^\]]*\])+)\.indexOf(\((((?>[^()]+)|(?2))*)\))/zindexOf($1, $3)/gs' \
-		"$TO"
-	
-	# automatic unlinking of backup files is broken in Cygwin, so remove manually
-	if [ -e "$TO.bak" ]; then
-		rm "$TO.bak"
-	fi
-}
-
 function usage {
 	cat >&2 <<DONE
 Usage: $0 [-p PLATFORMS] [-v VERSION] [-d]
@@ -53,6 +36,8 @@ Options
 DONE
 	exit 1
 }
+
+GULP=$CWD/node_modules/gulp/bin/gulp.js
 
 BUILD_BROWSER_EXT=0
 BUILD_SAFARI=0
@@ -130,7 +115,11 @@ SAFARI_EXT="$DISTDIR/Zotero_Connector-$VERSION.safariextz"
 
 ICONS="$EXTENSION_SKIN_DIR/treeitem*png $EXTENSION_SKIN_DIR/treesource-collection.png $EXTENSION_SKIN_DIR/zotero-new-z-16px.png  \
     $SRCDIR/common/images/*"
-IMAGES="$EXTENSION_SKIN_DIR/progress_arcs.png $EXTENSION_SKIN_DIR/cross.png $EXTENSION_SKIN_DIR/treesource-library.png"
+IMAGES="$EXTENSION_SKIN_DIR/progress_arcs.png \
+	$EXTENSION_SKIN_DIR/cross.png \
+	$EXTENSION_SKIN_DIR/tick.png $EXTENSION_SKIN_DIR/tick@2x.png \
+	$EXTENSION_SKIN_DIR/spinner-16px.png $EXTENSION_SKIN_DIR/spinner-16px@2x.png \
+	$EXTENSION_SKIN_DIR/treesource-library.png"
 PREFS_IMAGES="$EXTENSION_SKIN_DIR/prefs-general.png $EXTENSION_SKIN_DIR/prefs-advanced.png $EXTENSION_SKIN_DIR/prefs-proxies.png"
 
 LIBS=()
@@ -183,22 +172,19 @@ BOOKMARKLET_COMMON_INCLUDE=("$SRCDIR/bookmarklet/zotero_config.js" \
 	"$EXTENSION_XPCOM_DIR/utilities.js" \
 	"$SRCDIR/bookmarklet/messages.js")
 
-BOOKMARKLET_INJECT_TEST_INCLUDE=( \
-	"$SRCDIR/zotero/chrome/content/zotero/tools/testTranslators/translatorTester.js" \
-	"$SRCDIR/bookmarklet/translator.js" \
-	"$SRCDIR/bookmarklet/test.js")
-	
 BOOKMARKLET_AUXILIARY_JS=( \
 	"$SRCDIR/bookmarklet/loader.js" \
-	"$SRCDIR/bookmarklet/ie_hack.js" \
-	"$SRCDIR/bookmarklet/itemSelector/itemSelector_browserSpecific.js" \
-	"$SRCDIR/bookmarklet/upload.js" )
+	)
 
 # Remove log file
 rm -f "$LOG"
 
 # Remove old build directories
-rm -rf "$BUILD_DIR/browserExt" "$BUILD_DIR/safari.safariextension" "$BUILD_DIR/bookmarklet"
+rm -rf "$BUILD_DIR/browserExt" \
+	"$BUILD_DIR/chrome" \
+	"$BUILD_DIR/firefox" \
+	"$BUILD_DIR/safari.safariextension" \
+	"$BUILD_DIR/bookmarklet"
 
 # Make directories if they don't exist
 for dir in "$DISTDIR" \
@@ -242,15 +228,6 @@ cp "$CWD/icons/Icon-32.png" "$CWD/icons/Icon-48.png" "$CWD/icons/Icon-64.png" \
 rm -rf "$BUILD_DIR/browserExt/images"
 mkdir "$BUILD_DIR/browserExt/images"
 cp $ICONS $IMAGES $PREFS_IMAGES "$BUILD_DIR/browserExt/images"
-# Use larger icons where available, since Chrome actually wants 19px icons
-# 2x
-for img in "$BUILD_DIR"/browserExt/images/*2x.png; do
-	mv $img `echo $img | sed 's/@2x//'`
-done
-## 2.5x
-for img in "$BUILD_DIR"/browserExt/images/*48px.png; do
-	mv $img `echo $img | sed 's/@48px//'`
-done
 
 cp "$CWD/icons/Icon-16.png" "$CWD/icons/Icon-48.png" "$CWD/icons/Icon-96.png" "$CWD/icons/Icon-128.png" "$BUILD_DIR/browserExt"
 
@@ -360,15 +337,61 @@ if [[ $BUILD_SAFARI == 1 ]]; then
 	copyResources 'safari'
 fi
 
+# Make separate Chrome and Firefox directories
+if [[ $BUILD_BROWSER_EXT == 1 ]]; then
+	rsync -a $BUILD_DIR/browserExt/ $BUILD_DIR/chrome/
+	mv $BUILD_DIR/browserExt $BUILD_DIR/firefox
+fi
+
 if [[ $BUILD_BROWSER_EXT == 1 ]] || [[ $BUILD_SAFARI == 1 ]]; then
-	gulp -v >/dev/null 2>&1 || { echo >&2 "gulp not found -- aborting"; exit 1; }
+	"$GULP" -v >/dev/null 2>&1 || { echo >&2 "gulp not found -- aborting"; exit 1; }
 
 	# Update scripts
 	if [ ! -z $DEBUG ]; then
-		gulp process-custom-scripts --version "$VERSION" > "$LOG" 2>&1
+		"$GULP" process-custom-scripts --version "$VERSION" > "$LOG" 2>&1
 	else
-		gulp process-custom-scripts --version "$VERSION" -p > "$LOG" 2>&1
+		"$GULP" process-custom-scripts --version "$VERSION" -p > "$LOG" 2>&1
 	fi
+fi
+
+if [[ $BUILD_BROWSER_EXT == 1 ]]; then
+	# Chrome modifications
+	
+	# Use larger icons where available in Chrome, which actually wants 19px icons
+	# 2x
+	for img in "$BUILD_DIR"/chrome/images/*2x.png; do
+		cp $img `echo $img | sed 's/@2x//'`
+	done
+	## 2.5x
+	for img in "$BUILD_DIR"/chrome/images/*48px.png; do
+		cp $img `echo $img | sed 's/@48px//'`
+	done
+	
+	# Remove the 'applications' property used by Firefox from the manifest
+	pushd $BUILD_DIR/chrome > /dev/null
+	cat manifest.json | jq '. |= del(.applications)' > manifest.json-tmp
+	mv manifest.json-tmp manifest.json
+	popd > /dev/null
+	
+	# Firefox modifications
+	
+	# TEMP: Copy 2x icons to 1x until getImageSrc() is updated to detect HiDPI
+	for img in "$BUILD_DIR"/firefox/images/*2x.png; do
+		cp $img `echo $img | sed 's/@2x//'`
+	done
+	## 2.5x
+	for img in "$BUILD_DIR"/firefox/images/*48px.png; do
+		cp $img `echo $img | sed 's/@48px//'`
+	done
+	
+	# Remove 'optional_permissions' property used by Chrome from the manifest.
+	# If we start using other optional permissions in Firefox before 'management'
+	# is supported in Firefox, we can probably get jq to delete just 'management'.
+	pushd $BUILD_DIR/firefox > /dev/null
+	cat manifest.json | jq '. |= del(.optional_permissions)' > manifest.json-tmp
+	mv manifest.json-tmp manifest.json
+	popd > /dev/null
+
 fi
 
 echo "done"
@@ -418,108 +441,37 @@ if [ $BUILD_BOOKMARKLET == 1 ]; then
 	echo -n "Building bookmarklet..."
 	
 	# Make bookmarklet
-	for scpt in "iframe" "common" "inject"
-	do
-		tmpScript="$BUILD_DIR/bookmarklet/${scpt}_tmp.js"
-		
-		if [ "$scpt" == "iframe" ]; then
-			files=("${BOOKMARKLET_IFRAME_INCLUDE[@]}")
-		elif [ "$scpt" == "common" ]; then
-			files=("${BOOKMARKLET_COMMON_INCLUDE[@]}")
-			
-			echo "/******** BEGIN zotero.js ********/" >> "$tmpScript"
-			perl -p -e 's/^(\s*this.version\s*=\s*)"[^"]*"/$1"'"$VERSION"'"/' "$SRCDIR/common/zotero.js" | LC_CTYPE=C tr -d '\r' >> "$tmpScript"
-			echo "" >> "$tmpScript"
-			echo "/******** END zotero.js ********/" >> "$tmpScript"
-		elif [ "$scpt" == "inject" ]; then
-			files=("${BOOKMARKLET_INJECT_INCLUDE[@]}")
-		fi
-		
-		# Bundle scripts
-		for f in "${files[@]}"
-		do
-			# Remove Windows CRs when bundling
-			echo "/******** BEGIN `basename $f` ********/"
-			LC_CTYPE=C tr -d '\r' < $f
-			echo ""
-			echo "/******** END `basename $f` ********/"
-		done >> "$tmpScript"
-		builtScript="$BUILD_DIR/bookmarklet/${scpt}.js"
-		ieTmpScript="$BUILD_DIR/bookmarklet/${scpt}_ie_tmp.js"
-		ieBuiltScript="$BUILD_DIR/bookmarklet/${scpt}_ie.js"
-		
-		if [ "$scpt" == "inject" ]; then
-			if [ ! -z $DEBUG ]; then
-				# Make test scripts
-				if [ ! -d "$BUILD_DIR/bookmarklet/tests" ]; then
-					mkdir "$BUILD_DIR/bookmarklet/tests"
-				fi
-				testScript="$BUILD_DIR/bookmarklet/tests/inject_test.js"
-				ieTestScript="$BUILD_DIR/bookmarklet/tests/inject_ie_test.js"
-				
-				# Make inject_test.js
-				cat "$BUILD_DIR/bookmarklet/common.js" "$tmpScript" > "$testScript"
-				for f in "${BOOKMARKLET_INJECT_TEST_INCLUDE[@]}"
-				do
-					echo "/******** BEGIN `basename $f` ********/"
-					LC_CTYPE=C tr -d '\r' < $f
-					echo ""
-					echo "/******** END `basename $f` ********/"
-				done >> "$testScript"
-				
-				# Make inject_ie_test.js
-				explorerify "$testScript" "$ieBuiltScript"
-				cat "$SRCDIR/bookmarklet/ie_compat.js" \
-					"$SRCDIR/bookmarklet/iframe_ie_compat.js" \
-					"$ieBuiltScript" \
-					"$SRCDIR/bookmarklet/inject_ie_compat.js" > "$ieTestScript"
-				rm "$ieBuiltScript"
-			fi
-		fi
-		
-		explorerify "$tmpScript" "$ieTmpScript"
-		if [ "$scpt" == "common" ]; then
-			cat "$SRCDIR/bookmarklet/ie_compat.js" >> "$ieTmpScript"
-		elif [ "$scpt" == "iframe" ]; then
-			cat "$SRCDIR/bookmarklet/iframe_ie_compat.js" >> "$ieTmpScript"
-		elif [ "$scpt" == "inject" ]; then
-			cat "$SRCDIR/bookmarklet/inject_ie_compat.js" >> "$ieTmpScript";
-		fi
-		
-		# Transpile. Minify if not in debug mode
-		if [ ! -z $DEBUG ]; then
-			"$CWD/node_modules/babel-cli/bin/babel.js" "$tmpScript" --out-file "$builtScript" --presets es2015 -q >> "$LOG" 2>&1
-			"$CWD/node_modules/babel-cli/bin/babel.js" "$ieTmpScript" --out-file "$ieBuiltScript" --presets es2015 -q >> "$LOG" 2>&1
-			rm "$tmpScript" "$ieTmpScript"
-		else
-			"$CWD/node_modules/babel-cli/bin/babel.js" "$tmpScript" --out-file "$builtScript" --presets es2015,babili --no-comments -q >> "$LOG" 2>&1
-			"$CWD/node_modules/babel-cli/bin/babel.js" "$ieTmpScript" --out-file "$ieBuiltScript" --presets es2015,babili --no-comments -q >> "$LOG" 2>&1
-			rm "$tmpScript" "$ieTmpScript"
-		fi
-	done
 	
 	# Copy/minify auxiliary JS
-		if [ ! -z $DEBUG ]; then
+	if [ ! -z $DEBUG ]; then
 		cp "${BOOKMARKLET_AUXILIARY_JS[@]}" "$BUILD_DIR/bookmarklet"
 	else	
 		for scpt in "${BOOKMARKLET_AUXILIARY_JS[@]}"
 		do
-			"$CWD/node_modules/babel-cli/bin/babel.js" "$scpt" --out-file "$BUILD_DIR/bookmarklet/`basename \"$scpt\"`" --presets es2015,babili --no-comments -q >> "$LOG" 2>&1
+			"$CWD/node_modules/babel-cli/bin/babel.js" "$scpt" --out-file "$BUILD_DIR/bookmarklet/`basename \"$scpt\"`" --presets minify --no-comments -q >> "$LOG" 2>&1
 		done
-	fi
+	fi	
 	
 	# Copy HTML to dist directory
-	cp "$SRCDIR/bookmarklet/bookmarklet.html" \
-		"$SRCDIR/bookmarklet/debug_mode.html" \
+	cp -R "$SRCDIR/bookmarklet/debug_mode.html" \
 		"$SRCDIR/bookmarklet/iframe.html" \
-		"$SRCDIR/bookmarklet/iframe_ie.html" \
 		"$SRCDIR/bookmarklet/auth_complete.html" \
-		"$SRCDIR/common/itemSelector/"* \
+		"$SRCDIR/bookmarklet/upload.js" \
+		"$SRCDIR/common/itemSelector" \
+		"$SRCDIR/common/progressWindow" \
 		"$BUILD_DIR/bookmarklet"
 	cp "$SRCDIR/bookmarklet/htaccess" "$BUILD_DIR/bookmarklet/.htaccess"
 	rm -rf "$BUILD_DIR/bookmarklet/images"
 	mkdir "$BUILD_DIR/bookmarklet/images"
 	cp $ICONS $IMAGES "$BUILD_DIR/bookmarklet/images"
+	
+	# Update scripts
+	if [ ! -z $DEBUG ]; then
+		"$GULP" process-bookmarklet-scripts --version "$VERSION" > "$LOG" 2>&1
+	else
+		"$GULP" process-bookmarklet-scripts --version "$VERSION" -p > "$LOG" 2>&1
+	fi
+	
 	echo "done"
 else
 	rmdir "$BUILD_DIR/bookmarklet"

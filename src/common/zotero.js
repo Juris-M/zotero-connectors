@@ -23,7 +23,7 @@
     ***** END LICENSE BLOCK *****
 */
 
-var Zotero = new function() {
+var Zotero = window.Zotero = new function() {
 	this.version = "5.0";
 	this.isConnector = true;
 	this.isFx = false;
@@ -38,14 +38,14 @@ var Zotero = new function() {
 	// http://stackoverflow.com/questions/9847580/how-to-detect-safari-chrome-ie-firefox-and-opera-browser
 	// Firefox 1.0+
 	this.isFirefox = typeof InstallTrigger !== 'undefined';
-	// At least Safari 10+
-	this.isSafari = typeof safari !== 'undefined';
 	// Internet Explorer 6-11
 	this.isIE = /*@cc_on!@*/false || !!document.documentMode;
 	// Edge 20+
 	this.isEdge = !this.isIE && !!window.StyleMedia;
 	// Chrome and Chromium
 	this.isChrome = window.navigator.userAgent.indexOf("Chrome") !== -1 || window.navigator.userAgent.indexOf("Chromium") !== -1;
+	// At least Safari 10+
+	this.isSafari = window.navigator.userAgent.includes("Safari") && !this.isChrome;
 	this.isBrowserExt = this.isFirefox || this.isEdge || this.isChrome;
 
 	this.isMac = (window.navigator.platform.substr(0, 3) == "Mac");
@@ -74,11 +74,16 @@ var Zotero = new function() {
 	}
 	this.appName = `Zotero Connector for ${this.clientName}`;
 	
-	if (this.isBrowserExt) {
-		this.version = browser.runtime.getManifest().version;
-	} else if (this.isSafari) {
-		this.version = safari.extension.bundleVersion;
-	}
+	// this.isBookmarklet is not set until after this runs
+	setTimeout(() => {
+		if (!this.isBookmarklet) {
+			if (this.isBrowserExt) {
+				this.version = browser.runtime.getManifest().version;
+			} else if (this.isSafari) {
+				this.version = safari.extension.bundleVersion;
+			}
+		}
+	});
 	
 	// window.Promise and Promise differ (somehow) in Firefox and when certain
 	// async promise resolution conditions arise upon calling Zotero.Promise.all().then(result => )
@@ -179,17 +184,19 @@ var Zotero = new function() {
 			});
 		}
 
-		await Zotero.i18n.init();
 		await Zotero.Prefs.init();
 		
 		Zotero.Debug.init();
 		Zotero.Messaging.init();
 		Zotero.Connector_Types.init();
-		Zotero.Repo.init();
 		if (Zotero.isBrowserExt) {
 			Zotero.WebRequestIntercept.init();
 		}
-		Zotero.Proxies.init();
+		if (!Zotero.isBookmarklet) {
+			await Zotero.i18n.init();
+			Zotero.Repo.init();
+			Zotero.Proxies.init();
+		}
 		Zotero.initDeferred.resolve();
 
 		await Zotero.migrate();
@@ -204,14 +211,16 @@ var Zotero = new function() {
 		if (Zotero.isSafari) {
 			await Zotero.i18n.init();
 		}
+		if (!Zotero.isBookmarklet) {
+			Zotero.ConnectorIntegration.init();
+		}
 		Zotero.Connector_Types.init();
-		Zotero.ConnectorIntegration.init();
 		Zotero.Prefs.loadNamespace(['translators.', 'downloadAssociatedFiles', 'automaticSnapshots',
 			'reportTranslationFailure', 'capitalizeTitles']);
-		return Zotero.Prefs.loadNamespace('debug').then(function() {
-			Zotero.Debug.init();
-			Zotero.initDeferred.resolve();
-		});
+		await Zotero.Prefs.loadNamespace('debug');
+		
+		Zotero.Debug.init();
+		Zotero.initDeferred.resolve();
 	};
 	
 	
@@ -328,7 +337,7 @@ Zotero.Prefs = new function() {
 		"automaticSnapshots": true, // only affects saves to zotero.org. saves to client governed by pref in the client
 		"connector.repo.lastCheck.localTime": 0,
 		"connector.repo.lastCheck.repoTime": 0,
-		"connector.url": ZOTERO_CONFIG.CONNECTOR_SERVER_URL,
+		"connector.url": 'http://127.0.0.1:23119/',
 		"capitalizeTitles": false,
 		"interceptKnownFileTypes": true,
 		"allowedInterceptHosts": [],
@@ -345,7 +354,7 @@ Zotero.Prefs = new function() {
 		"proxies.proxies": [],
 		"proxies.clientChecked": false,
 		
-		"integration.googleDocs.enabled": false
+		"integration.googleDocs.enabled": true
 	};
 	
 	this.syncStorage = {};

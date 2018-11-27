@@ -23,30 +23,31 @@
 	***** END LICENSE BLOCK *****
 */
 
-window.onload = async function () {
-	Zotero.Messaging.addMessageListener('modalPrompt.show', async function(props) {
-		var deferred = Zotero.Promise.defer();
-		let div = document.querySelector('#zotero-modal-prompt');
-		let prompt = (
-			<Zotero.UI.ModalPrompt onClose={onClose} {...props}/>
-		);
-		function onClose(state, event) {
-			deferred.resolve({
-				button: event ? parseInt(event.target.name || 0) : 0,
-				checkboxChecked: state.checkboxChecked,
-				inputText: state.inputText
-			});
-			ReactDOM.unmountComponentAtNode(div);
+/**
+ * This file gets concated with messages.json for static eng locale strings in the bookmarklet
+ */
+Zotero.i18n = {
+	init: async () => 0,
+	getString: function(name, substitutions) {
+		if (!this.localeJSON) {
+			Zotero.logError(new Error(`i18n.getString called for ${name} before i18n.localeJSON was loaded.`));
+			return '{' + name + '}';
 		}
-		ReactDOM.render(prompt, div);
-		document.body.appendChild(div);
-		return await deferred.promise;
-	});
+		var str = this.localeJSON[name] && this.localeJSON[name].message;
+		if (!str) {
+			Zotero.logError(new Error(`Localized string '${name}' is not defined.`));
+			return '{' + name + '}';
+		}
+		if (substitutions != undefined) {
+			if (!Array.isArray(substitutions)) {
+				substitutions = [substitutions];
+			}
+			for (let i = 0; i < substitutions.length; i++) {
+				let sub = substitutions[i];
+				str = str.replace(new RegExp(`\\$${i+1}`, 'g'), sub)
+			}
+		}
 
-	// To enable testing with mocha
-	Zotero.isInject = true;
-	Zotero.initDeferred.resolve();
-	
-	await Zotero.Messaging.init();
-	Zotero.Messaging.sendMessage('modalPrompt.init', null);
+		return str;
+	}
 };

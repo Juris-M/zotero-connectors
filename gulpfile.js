@@ -25,6 +25,7 @@
 
 'use strict';
 
+const { watchBookmarklet, processBookmarkletScripts } = require('./scripts/gulpfile_bookmarklet');
 const exec = require('child_process').exec;
 const through = require('through2');
 const gulp = require('gulp');
@@ -146,6 +147,7 @@ if (!argv.p) {
 var backgroundIncludeBrowserExt = ['browser-polyfill.js'].concat(backgroundInclude, [
 	'webRequestIntercept.js',
 	'contentTypeHandler.js',
+	'firefoxPDF.js'
 ]);
 
 function reloadChromeExtensionsTab(cb) {
@@ -207,16 +209,20 @@ function processFile() {
 		}
 		
 		var addFiles = function(file) {
+			var f;
+			
 			// Amend paths
 			if (type === 'common' || type === 'browserExt') {
 				if (file.path.includes('.html')) {
 					file.contents = Buffer.from(replaceScriptsHTML(
 						file.contents.toString(), "<!--SCRIPTS-->", injectIncludeBrowserExt.map(s => `../../${s}`)));
 				}
-				var f = file.clone({contents: false});
-				f.path = parts.slice(0, i-1).join('/') + '/build/browserExt/' + parts.slice(i+1).join('/');
-				console.log(`-> ${f.path.slice(f.cwd.length)}`);
-				this.push(f);
+				['chrome', 'firefox'].forEach((browser) => {
+					f = file.clone({contents: false});
+					f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/` + parts.slice(i+1).join('/');
+					console.log(`-> ${f.path.slice(f.cwd.length)}`);
+					this.push(f);
+				});
 			}
 			if (type === 'common' || type === 'safari') {
 				if (file.path.includes('test/data') && file.path.includes('.html')) {
@@ -234,11 +240,13 @@ function processFile() {
 					+ parts.slice(i+3).join('/');
 				console.log(`-> ${f.path.slice(f.cwd.length)}`);
 				this.push(f);
-				f = file.clone({contents: false});
-				f.path = parts.slice(0, i-1).join('/') + '/build/browserExt/zotero-google-docs-integration/' 
-					+ parts.slice(i+3).join('/');
-				console.log(`-> ${f.path.slice(f.cwd.length)}`);
-				this.push(f);
+				['chrome', 'firefox'].forEach((browser) => {
+					f = file.clone({contents: false});
+					f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/zotero-google-docs-integration/`
+						+ parts.slice(i+3).join('/');
+					console.log(`-> ${f.path.slice(f.cwd.length)}`);
+					this.push(f);
+				});
 			}
 			cb();
 		}.bind(this);
@@ -263,6 +271,7 @@ function processFile() {
 					);
 				}
 				file.contents = Buffer.from(contents);
+				break;
 			case 'zotero.js':
 				if (!argv.p) {
 					file.contents = Buffer.from(file.contents.toString()
@@ -288,6 +297,7 @@ function processFile() {
 				break;
 			case 'preferences.html':
 			case 'progressWindow.html':
+			case 'modalPrompt.html':
 				file.contents = Buffer.from(file.contents.toString()
 					.replace(/<!--BEGIN DEBUG-->([\s\S]*?)<!--END DEBUG-->/g, argv.p ? '' : '$1'));
 				break;
@@ -344,6 +354,7 @@ gulp.task('process-custom-scripts', function() {
 		'./src/common/node_modules.js',
 		'./src/common/preferences/preferences.html',
 		'./src/common/progressWindow/progressWindow.html',
+		'./src/common/modalPrompt/modalPrompt.html',
 		'./src/common/zotero.js',
 		'./src/common/zotero_config.js',
 		'./src/common/test/**/*',
@@ -358,5 +369,8 @@ gulp.task('process-custom-scripts', function() {
 		.pipe(gulp.dest((data) => data.base));
 });
 
+gulp.task('watch-bookmarklet', watchBookmarklet(argv))
+
+gulp.task('process-bookmarklet-scripts', processBookmarkletScripts(argv));
 
 gulp.task('default', ['watch']);

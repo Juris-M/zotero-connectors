@@ -23,9 +23,6 @@
     ***** END LICENSE BLOCK *****
 */
 
-/**
- * Only register progress window code in top window
- */
 var isTopWindow = false;
 if(window.top) {
 	try {
@@ -52,6 +49,7 @@ if (isTopWindow) {
  */
 Zotero.Inject = new function() {
 	var _translate;
+	var _noteImgSrc;
 	this.sessionDetails = {};
 	this.translators = [];
 		
@@ -66,7 +64,7 @@ Zotero.Inject = new function() {
 			Zotero.GoogleDocs_API.onAuthComplete(document.location.href);
 		}
 
-		const noteImgSrc = Zotero.isSafari
+		_noteImgSrc = Zotero.isSafari
 			? safari.extension.baseURI+"images/treeitem-note.png"
 			: browser.extension.getURL('images/treeitem-note.png');
 		
@@ -92,6 +90,8 @@ Zotero.Inject = new function() {
 					Zotero.Connector_Browser.onPageLoad();
 					Zotero.Messaging.sendMessage("pageModified", null);
 				}, false);
+			} else {
+				_translate.setDocument(document);
 			}
 			return _translate.getTranslators(true).then(function(translators) {
 				if (!translators.length && Zotero.isSafari) {
@@ -187,7 +187,7 @@ Zotero.Inject = new function() {
 							{
 								sessionID,
 								id: null,
-								iconSrc: noteImgSrc,
+								iconSrc: _noteImgSrc,
 								title: Zotero.Utilities.cleanTags(note.note),
 								parentItem: item.id,
 								progress: 100
@@ -197,7 +197,6 @@ Zotero.Inject = new function() {
 				}
 			});
 			translate.setHandler("attachmentProgress", function(obj, attachment, progress, err) {
-				if(progress === 0) return;
 				Zotero.Messaging.sendMessage(
 					"progressWindow.itemProgress",
 					{
@@ -205,6 +204,7 @@ Zotero.Inject = new function() {
 						id: attachment.id,
 						iconSrc: determineAttachmentIcon(attachment),
 						title: attachment.title,
+						parentItem: attachment.parentItem,
 						progress
 					}
 				);
@@ -217,8 +217,10 @@ Zotero.Inject = new function() {
 		if(attachment.linkMode === "linked_url") {
 			return Zotero.ItemTypes.getImageSrc("attachment-web-link");
 		}
-		return Zotero.ItemTypes.getImageSrc(attachment.mimeType === "application/pdf"
-							? "attachment-pdf" : "attachment-snapshot");
+		var contentType = attachment.contentType || attachment.mimeType;
+		return Zotero.ItemTypes.getImageSrc(
+			contentType === "application/pdf" ? "attachment-pdf" : "attachment-snapshot"
+		);
 	}
 
 	/**
@@ -433,17 +435,18 @@ Zotero.Inject = new function() {
 					this.sessionDetails = {};
 					return;
 				}
-				// Should we fallback if translator.itemType == "multiple"?
-				else if (options.fallbackOnFailure && translators.length) {
-					Zotero.Messaging.sendMessage("progressWindow.error", ['fallback', translator.label, translators[0].label]);
-				}
-				else {
-					Zotero.debug(e.stack ? e.stack : e, 1);
-					
+				if (translator.itemType != 'multiple') {
+					if (options.fallbackOnFailure && translators.length) {
+						Zotero.Messaging.sendMessage("progressWindow.error", ['fallback', translator.label, translators[0].label]);
+					}
+					else {
+						Zotero.Messaging.sendMessage("progressWindow.error", ['fallback', translator.label, "Save as Webpage"]);
+						return await this._saveAsWebpage({sessionID, snapshot: true});
+					}
+				} else {
 					// Clear session details on failure, so another save click tries again
 					this.sessionDetails = {};
 					Zotero.Messaging.sendMessage("progressWindow.done", [false]);
-					return;
 				}
 			}
 		}
@@ -451,7 +454,6 @@ Zotero.Inject = new function() {
 	
 	this.saveAsWebpage = async function (args) {
 		var title = args[0] || document.title, options = args[1] || {};
-		var image;
 		var result = await Zotero.Inject.checkActionToServer();
 		if (!result) return;
 		
@@ -470,7 +472,16 @@ Zotero.Inject = new function() {
 		}
 		
 		var sessionID = Zotero.Utilities.randomString();
-		
+		return await this._saveAsWebpage({sessionID, title, snapshot: options.snapshot});
+	};
+	
+	this._saveAsWebpage = async function(options={}) {
+		var sessionID = options.sessionID;
+		var title = options.title || document.title;
+		var translatorID = 'webpage' + (options.snapshot ? 'WithSnapshot' : '');
+		if (!sessionID) {
+			throw new Error("Trying to save as webpage without session ID");
+		}
 		var data = {
 			sessionID,
 			url: document.location.toString(),
@@ -478,7 +489,8 @@ Zotero.Inject = new function() {
 			html: document.documentElement.innerHTML,
 			skipSnapshot: !options.snapshot
 		};
-		
+
+		var image;
 		if (document.contentType == 'application/pdf') {
 			data.pdf = true;
 			image = "attachment-pdf";
@@ -497,7 +509,7 @@ Zotero.Inject = new function() {
 			}
 		);
 		try {
-			result = await Zotero.Connector.callMethodWithCookies("saveSnapshot", data);
+			var result = await Zotero.Connector.callMethodWithCookies("saveSnapshot", data);
 			Zotero.Messaging.sendMessage("progressWindow.sessionCreated", { sessionID });
 			Zotero.Messaging.sendMessage(
 				"progressWindow.itemProgress",
@@ -536,6 +548,7 @@ Zotero.Inject = new function() {
 							}
 						);
 					}
+					Zotero.Messaging.sendMessage("progressWindow.done", [true]);
 					return;
 				} else {
 					Zotero.Messaging.sendMessage("progressWindow.done", [false, 'clientRequired']);
@@ -549,7 +562,7 @@ Zotero.Inject = new function() {
 			}
 			throw e;
 		}
-	};
+	}
 	
 	this.addKeyboardShortcut = function(eventDescriptor, fn, elem) {
 		elem = elem || document;

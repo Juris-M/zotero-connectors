@@ -57,7 +57,7 @@ Zotero.Connector_Browser = new function() {
 		var isPDF = contentType == 'application/pdf';
 		_tabInfo[tab.id] = Object.assign(_tabInfo[tab.id] || {injections: {}}, {translators, instanceID, isPDF});
 		
-		_updateExtensionUI(tab);
+		Zotero.Connector_Browser._updateExtensionUI(tab);
 	}
 
 	/**
@@ -72,7 +72,7 @@ Zotero.Connector_Browser = new function() {
 		browser.tabs.get(tabId).then(function(tab) {
 			_tabInfo[tab.id] = Object.assign(_tabInfo[tab.id] || {injections: {}}, {translators: [], isPDF: true, frameId});
 			Zotero.Connector_Browser.injectTranslationScripts(tab, frameId);
-			_updateExtensionUI(tab);
+			Zotero.Connector_Browser._updateExtensionUI(tab);
 		});
 	}
 	
@@ -114,7 +114,7 @@ Zotero.Connector_Browser = new function() {
 	}
 	
 	this.onTabActivated = function(tab) {
-		_updateExtensionUI(tab);
+		Zotero.Connector_Browser._updateExtensionUI(tab);
 	};
 	
 	/**
@@ -139,7 +139,7 @@ Zotero.Connector_Browser = new function() {
 	 * @param frameId
 	 * @param url - url of the frame
 	 */
-	this.onFrameLoaded = Zotero.Promise.method(function(tab, frameId, url) {
+	this.onFrameLoaded = async function(tab, frameId, url) {
 		if (_isDisabledForURL(tab.url) && frameId == 0 || _isDisabledForURL(url)) {
 			return;
 		}
@@ -155,6 +155,11 @@ Zotero.Connector_Browser = new function() {
 				// Also in the first frame detected
 				// See https://github.com/zotero/zotero-connectors/issues/156
 				_tabInfo[tab.id].frameChecked = true;
+				// If you try to inject here immediately Firefox throws
+				// "Frame not found, or missing host permission"
+				if (Zotero.isFirefox) {
+					await Zotero.Promise.delay(100);
+				}
 				return Zotero.Connector_Browser.injectTranslationScripts(tab, frameId);
 			}
 		}
@@ -172,7 +177,7 @@ Zotero.Connector_Browser = new function() {
 			Zotero.debug(translators[0].length+  " translators found. Injecting into [tab.url, url]: " + tab.url + " , " + url);
 			return Zotero.Connector_Browser.injectTranslationScripts(tab, frameId);
 		});
-	});
+	};
 	
 	this.isIncognito = function(tab) {
 		return tab.incognito;
@@ -350,9 +355,15 @@ Zotero.Connector_Browser = new function() {
 		}
 	};
 	
-	this.bringToFront = async function(drawAttention=false) {
-		let win = await browser.windows.getLastFocused();
-		browser.windows.update(win.id, {drawAttention, focused: true});
+	this.bringToFront = async function(drawAttention=false, tab) {
+		var windowId;
+		if (tab && tab.windowId) {
+			windowId = tab.windowId;
+		} else {
+			let win = await browser.windows.getLastFocused();
+			windowId = win.id;
+		}
+		browser.windows.update(windowId, {drawAttention, focused: true});
 	}
 
 	this.openTab = function(url, tab) {
@@ -416,7 +427,7 @@ Zotero.Connector_Browser = new function() {
 	/**
 	 * Update status and tooltip of Zotero button
 	 */
-	function _updateExtensionUI(tab) {
+	this._updateExtensionUI = function (tab) {
 		if (Zotero.Prefs.get('firstUse') && Zotero.isFirefox) return _showFirstUseUI(tab);
 		browser.contextMenus.removeAll();
 
@@ -498,22 +509,22 @@ Zotero.Connector_Browser = new function() {
 		delete _tabInfo[tabID];
 	}
 	
-	function _updateInfoForTab(tab) {
-		if (!(tab.id in _tabInfo)) {
-			_tabInfo[tab.id] = {
-				url: tab.url,
+	function _updateInfoForTab(tabId, url) {
+		if (!(tabId in _tabInfo)) {
+			_tabInfo[tabId] = {
+				url: url,
 				injections: {}
 			}
 		}
-		if (_tabInfo[tab.id].url != tab.url) {
-			Zotero.debug(`Connector_Browser: URL changed from ${_tabInfo[tab.id].url} to ${tab.url}`);
-			if (_tabInfo[tab.id].injections) {
-				for (let frameId in _tabInfo[tab.id].injections) {
-					_tabInfo[tab.id].injections[frameId].reject(new Error(`URL changed for tab ${tab.url}`));
+		if (_tabInfo[tabId].url != url) {
+			Zotero.debug(`Connector_Browser: URL changed from ${_tabInfo[tabId].url} to ${url}`);
+			if (_tabInfo[tabId].injections) {
+				for (let frameId in _tabInfo[tabId].injections) {
+					_tabInfo[tabId].injections[frameId].reject(new Error(`URL changed for tab ${url}`));
 				}
 			}
-			_tabInfo[tab.id] = {
-				url: tab.url,
+			_tabInfo[tabId] = {
+				url: url,
 				injections: {}
 			};
 		}
@@ -710,7 +721,7 @@ Zotero.Connector_Browser = new function() {
 			Zotero.Messaging.sendMessage("firstUse", null, tab)
 			.then(function () {
 				Zotero.Prefs.set('firstUse', false);
-				_updateExtensionUI(tab);
+				Zotero.Connector_Browser._updateExtensionUI(tab);
 			});
 		}
 		else if(_tabInfo[tab.id] && _tabInfo[tab.id].translators && _tabInfo[tab.id].translators.length) {
@@ -740,7 +751,7 @@ Zotero.Connector_Browser = new function() {
 	 * 		- note <String> add string as a note to the saved item
 	 * @returns {Promise<*>}
 	 */
-	this.saveWithTranslator = function(tab, i, options) {
+	this.saveWithTranslator = function(tab, i, options={}) {
 		var translator = _tabInfo[tab.id].translators[i];
 		
 		// Set frameId to null - send message to all frames
@@ -758,6 +769,10 @@ Zotero.Connector_Browser = new function() {
 	}
 	
 	this.saveAsWebpage = function(tab, frameId, options) {
+		if (Zotero.isFirefox && Zotero.browserMajorVersion >= 60 && _tabInfo[tab.id].isPDF) {
+			return Zotero.Utilities.saveFirefoxPDF(tab);
+		}
+	
 		if (tab.id != -1) {
 			return Zotero.Messaging.sendMessage("saveAsWebpage", [tab.title, options], tab, frameId);
 		}
@@ -814,16 +829,21 @@ Zotero.Connector_Browser = new function() {
 	}));
 	
 	browser.webNavigation.onCommitted.addListener(logListenerErrors(async function(details) {
-		var tab = await browser.tabs.get(details.tabId);
-		// Ignore developer tools
-		if (tab.id < 0 || _isDisabledForURL(tab.url, true)) return;
+		// Ignore developer tools, item selector
+		if (details.tabId < 0 || _isDisabledForURL(details.url, true)
+				|| details.url.indexOf(browser.extension.getURL("itemSelector/itemSelector.html")) === 0) return;
 
 		if (details.frameId == 0) {
-			// Ignore item selector
-			if (tab.url.indexOf(browser.extension.getURL("itemSelector/itemSelector.html")) === 0) return;
-			_updateInfoForTab(tab);
-			_updateExtensionUI(tab);
+			_updateInfoForTab(details.tabId, details.url);
+			// Getting the tab is uber slow in Firefox. Since _updateInfoForTab() resets the
+			// object we use to store tab related metadata, it needs to fire ASAP, so that other hooks
+			// such as those from webNavigation events can update the metadata, without it being overwritten
+			var tab = await browser.tabs.get(details.tabId);
+			Zotero.Connector_Browser._updateExtensionUI(tab);
 			Zotero.Connector.reportActiveURL(tab.url);
+		}
+		if (!tab) {
+			var tab = await browser.tabs.get(details.tabId);
 		}
 		// _updateInfoForTab will reject pending injections, but we need to make sure this
 		// executes in the next event loop such that the rejections can be processed
