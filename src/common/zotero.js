@@ -337,7 +337,7 @@ Zotero.Prefs = new function() {
 		"automaticSnapshots": true, // only affects saves to zotero.org. saves to client governed by pref in the client
 		"connector.repo.lastCheck.localTime": 0,
 		"connector.repo.lastCheck.repoTime": 0,
-		"connector.url": 'http://127.0.0.1:23119/',
+		"connector.url": 'http://127.0.0.1:24119/',
 		"capitalizeTitles": false,
 		"interceptKnownFileTypes": true,
 		"allowedInterceptHosts": [],
