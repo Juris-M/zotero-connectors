@@ -34,10 +34,12 @@
 </head>
 <body>
 <menu>
+<<<<<<< HEAD
 	<li><a id="zotero-save-page-with-snapshot" href="javascript:void(0)">Save to Juris-M (Web Page with Snapshot)</a></li>
 	<li><a id="zotero-save-page-without-snapshot" href="javascript:void(0)">Save to Juris-M (Web Page without Snapshot)</a></li>
+	<li id="zotero-save-PDF" style="display: none"><a href="javascript:void(0)">Save to Juris-M (PDF)</a></li>
 	<hr/>
-	<li><a id="zotero-preferences" href="javascript:void(0)">Zotero Preferences</a></li>
+	<li id="zotero-preferences"><a href="javascript:void(0)">Juris-M Preferences</a></li>
 </menu>
 <script>
 	(function () {
@@ -46,29 +48,23 @@
 			Zotero_Connector_Browser.openTab(safari.extension.baseURI + "preferences/preferences.html");
 			safari.self.hide();
 		};
+		function saveAsWebpage(snapshot=true) {
+			var Zotero_Connector_Browser = safari.extension.globalPage.contentWindow.Zotero.Connector_Browser;
+			Zotero_Connector_Browser.saveAsWebpage(
+				Zotero_Connector_Browser.activeTab,
+				{
+					snapshot,
+					resave: true
+				}
+			);
+			safari.self.hide();
+		}
 		var saveWithSnapshotElem = document.getElementById('zotero-save-page-with-snapshot');
-		saveWithSnapshotElem.onclick = function () {
-			var Zotero_Connector_Browser = safari.extension.globalPage.contentWindow.Zotero.Connector_Browser;
-			Zotero_Connector_Browser.saveAsWebpage(
-				Zotero_Connector_Browser.activeTab,
-				{
-					snapshot: true,
-					resave: true
-				}
-			);
-			safari.self.hide();
-		};
 		var saveWithoutSnapshotElem = document.getElementById('zotero-save-page-without-snapshot');
-		saveWithoutSnapshotElem.onclick = function () {
-			var Zotero_Connector_Browser = safari.extension.globalPage.contentWindow.Zotero.Connector_Browser;
-			Zotero_Connector_Browser.saveAsWebpage(
-				Zotero_Connector_Browser.activeTab,
-				{
-					resave: true
-				}
-			);
-			safari.self.hide();
-		};
+		var savePDFElem = document.getElementById('zotero-save-PDF');
+		saveWithSnapshotElem.onclick = saveAsWebpage;
+		savePDFElem.onclick = saveAsWebpage;
+		saveWithoutSnapshotElem.onclick = saveAsWebpage.bind(this, [false]);
 
 		safari.application.addEventListener('popover', function (event) {
 			var Zotero = safari.extension.globalPage.contentWindow.Zotero;
@@ -95,17 +91,24 @@
 				Zotero.Prefs.get('automaticSnapshots');
 			if (withSnapshot) {
 				document.getElementsByTagName('menu')[0]
-					.insertBefore(saveWithSnapshotElem.parentNode, saveWithoutSnapshotElem.parentNode);
+					.insertBefore(saveWithSnapshotElem, saveWithoutSnapshotElem);
 			} else {
 				document.getElementsByTagName('menu')[0]
-					.insertBefore(saveWithoutSnapshotElem.parentNode, saveWithSnapshotElem.parentNode);
+					.insertBefore(saveWithoutSnapshotElem, saveWithSnapshotElem);
 			}
 
+<<<<<<< HEAD
 			if (tab.contentType == 'application/pdf' ||
 				tab.isPDFFrame) {
 				document.getElementById('zotero-save-page-with-snapshot').textContent = "Save to Juris-M (PDF)";
 				document.getElementById('zotero-save-page-without-snapshot').style.display = 'none';
 			}
+=======
+			var isPDF = tab.contentType == 'application/pdf' || tab.isPDFFrame;
+			saveWithoutSnapshotElem.style.display = isPDF ? 'none' : null;
+			saveWithSnapshotElem.style.display = isPDF ? 'none' : null;
+			savePDFElem.style.display = isPDF ? null : 'none';
+>>>>>>> be409ed6679d90a5633e02f82f2e5e4108cc063a
 
 			var translators = tab.translators;
 			if (!translators || event.target.identifier != 'zotero-translatorSelector') return;
@@ -121,7 +124,7 @@
 				let a = document.createElement('a');
 				a.setAttribute('href', 'javascript:void(0);');
 				a.textContent = `${Zotero.getString('general_saveTo', 'Zotero')} (${translator.label})`;
-				a.onclick = function () {
+				li.onclick = function () {
 					Zotero.Connector_Browser.saveWithTranslator(
 						tab,
 						i,

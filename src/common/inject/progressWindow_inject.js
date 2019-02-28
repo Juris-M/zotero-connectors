@@ -257,6 +257,7 @@ if (isTopWindow || Zotero.isBookmarklet) {
 		var style = {
 			position: 'fixed',
 			top: '15px',
+			left: 'auto',
 			right: '8px',
 			width: '351px',
 			maxWidth: '95%',
@@ -433,6 +434,7 @@ if (isTopWindow || Zotero.isBookmarklet) {
 				// Disable closing on mouseleave until save finishes. (This is disabled initially
 				// but is enabled when a save finishes, so we have to redisable it for a new session.)
 				closeOnLeave = false;
+				lastSuccessfulTarget = null;
 			}
 		}
 		currentSessionID = sessionID;
