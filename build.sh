@@ -373,6 +373,12 @@ if [[ $BUILD_BROWSER_EXT == 1 ]]; then
 	mv manifest.json-tmp manifest.json
 	popd > /dev/null
 	
+	# Remove cruft from the version string that would make Chrome barf.
+	pushd $BUILD_DIR/chrome > /dev/null
+	cat manifest.json | jq '.version |= sub("beta.*"; "")' > manifest.json-tmp
+	mv manifest.json-tmp manifest.json
+	popd > /dev/null
+	
 	# Firefox modifications
 	
 	# TEMP: Copy 2x icons to 1x until getImageSrc() is updated to detect HiDPI
