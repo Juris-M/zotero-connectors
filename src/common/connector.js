@@ -30,6 +30,7 @@ Zotero.Connector = new function() {
 	var _ieStandaloneIframeTarget, _ieConnectorCallbacks;
 	this.isOnline = (Zotero.isSafari || Zotero.isFirefox) ? false : null;
 	this.shouldReportActiveURL = true;
+	this.clientVersion = '';
 	
 	/**
 	 * Checks if Zotero is online and passes current status to callback
@@ -66,6 +67,11 @@ Zotero.Connector = new function() {
 		});
 	}
 	
+	this.getClientVersion = async function() {
+		let isOnline = await this.checkIsOnline();
+		return isOnline && this.clientVersion;
+	}
+	
 	/**
 	 * Sends the XHR to execute an RPC call.
 	 *
@@ -99,11 +105,12 @@ Zotero.Connector = new function() {
 		var newCallback = function(req) {
 			try {
 				var isOnline = req.status !== 0 && req.status !== 403 && req.status !== 412;
-				
-				if(Zotero.Connector.isOnline !== isOnline) {
+
+				Zotero.Connector.clientVersion = req.getResponseHeader('X-Zotero-Version');
+				if (Zotero.Connector.isOnline !== isOnline) {
 					Zotero.Connector.isOnline = isOnline;
-					if(Zotero.Connector_Browser && Zotero.Connector_Browser.onStateChange) {
-						Zotero.Connector_Browser.onStateChange(isOnline && req.getResponseHeader('X-Zotero-Version'));
+					if (Zotero.Connector_Browser && Zotero.Connector_Browser.onStateChange) {
+						Zotero.Connector_Browser.onStateChange(isOnline && Zotero.Connector.clientVersion);
 					}
 				}
 				var val = null;

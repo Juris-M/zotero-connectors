@@ -120,7 +120,8 @@ var MESSAGES = {
 	Connector: {
 		checkIsOnline: true,
 		callMethod: true,
-		callMethodWithCookies: true
+		callMethodWithCookies: true,
+		getClientVersion: true,
 	},
 	Connector_Browser: {
 		onSelect: true,
@@ -128,7 +129,7 @@ var MESSAGES = {
 		onTranslators: false,
 		injectScripts: true,
 		isIncognito: true,
-		firstSaveToServerPrompt: true,
+		newerVersionRequiredPrompt: true,
 		openTab: false,
 		openConfigEditor: false,
 		openPreferences: false,
