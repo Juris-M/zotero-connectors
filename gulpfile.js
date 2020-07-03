@@ -26,21 +26,22 @@
 'use strict';
 
 const { watchBookmarklet, processBookmarkletScripts } = require('./scripts/gulpfile_bookmarklet');
+const replaceBrowser = require('./scripts/replace_browser');
 const exec = require('child_process').exec;
 const through = require('through2');
 const gulp = require('gulp');
 const plumber = require('gulp-plumber');
-const babel = require('babel-core');
+const babel = require('@babel/core');
 const browserify = require('browserify');
 const argv = require('yargs')
 	.boolean('p')
 	.alias('p', 'production')
 	.describe('p', 'Production. Do not include translator tester.')
-	.alias('v', 'version')
-	.describe('v', 'Version of the extension')
+	.string('connector-version')
+	.describe('connector-version', 'Version of the extension')
 	.help('h')
 	.alias('h', 'help')
-	.default({'v': '4.999.0', p: false})
+	.default({'connector-version': '4.999.0', p: false})
 	.argv;
 
 var injectInclude = [
@@ -94,11 +95,7 @@ if (argv.p) {
 		'tools/testTranslators/translatorTester_inject.js'
 	];
 }
-var injectIncludeSafari = [].concat(injectInclude, ['ui/notification.js', 'browser_inject.js'], injectIncludeLast);
 var injectIncludeBrowserExt = ['browser-polyfill.js'].concat(injectInclude, ['api.js'], injectIncludeLast);
-if (!argv.p) {
-	injectIncludeSafari = injectIncludeSafari.concat(['lib/sinon.js', 'test/testSetup.js'])
-}
 
 var backgroundInclude = [
 	'node_modules.js',
@@ -130,7 +127,7 @@ var backgroundInclude = [
 	'zotero/connectorTypeSchemaData.js',
 	'zotero/utilities.js',
 	'utilities.js',
-	'zotero-google-docs-integration/api.js',
+	'google-docs-plugin-manager.js',
 	'messages.js',
 	'messaging.js'
 ];
@@ -176,7 +173,7 @@ function replaceScriptsHTML(string, match, scripts) {
 }
 
 function processFile() {
-	return through.obj(function(file, enc, cb) {
+	return through.obj(async function(file, enc, cb) {
 		console.log(file.path.slice(file.cwd.length));
 		var offset = file.cwd.split('/').length;
 		var parts = file.path.split('/');
@@ -190,13 +187,17 @@ function processFile() {
 		}
 		var type = parts[i];
 		
+		// Transform react
 		if (ext == 'jsx') {
 			try {
-				file.contents = new Buffer(
+				file.contents = Buffer.from(
 					babel.transform(
 						file.contents,
 						{
-							plugins: ['transform-react-jsx', 'transform-class-properties']
+							plugins: [
+								'@babel/plugin-transform-react-jsx',
+								'@babel/plugin-proposal-class-properties'
+							]
 						}
 					).code
 				);
@@ -204,54 +205,10 @@ function processFile() {
 				console.log(e.message);
 				return;
 			}
+			// Remove the 'x' from '.jsx'
 			parts[parts.length-1] = basename = basename.substr(0, basename.length-1);
-			ext = 'js';
 		}
 		
-		var addFiles = function(file) {
-			var f;
-			
-			// Amend paths
-			if (type === 'common' || type === 'browserExt') {
-				if (file.path.includes('.html')) {
-					file.contents = Buffer.from(replaceScriptsHTML(
-						file.contents.toString(), "<!--SCRIPTS-->", injectIncludeBrowserExt.map(s => `../../${s}`)));
-				}
-				['chrome', 'firefox'].forEach((browser) => {
-					f = file.clone({contents: false});
-					f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/` + parts.slice(i+1).join('/');
-					console.log(`-> ${f.path.slice(f.cwd.length)}`);
-					this.push(f);
-				});
-			}
-			if (type === 'common' || type === 'safari') {
-				if (file.path.includes('test/data') && file.path.includes('.html')) {
-					file.contents = Buffer.from(replaceScriptsHTML(
-						file.contents.toString(), "<!--SCRIPTS-->", injectIncludeSafari.map(s => `../../${s}`)));
-				}
-				f = file.clone({contents: false});
-				f.path = parts.slice(0, i-1).join('/') + '/build/safari.safariextension/' + parts.slice(i+1).join('/');
-				console.log(`-> ${f.path.slice(f.cwd.length)}`);
-				this.push(f);
-			}
-			if (type === 'zotero-google-docs-integration') {
-				f = file.clone({contents: false});
-				f.path = parts.slice(0, i-1).join('/') + '/build/safari.safariextension/zotero-google-docs-integration/' 
-					+ parts.slice(i+3).join('/');
-				console.log(`-> ${f.path.slice(f.cwd.length)}`);
-				this.push(f);
-				['chrome', 'firefox'].forEach((browser) => {
-					f = file.clone({contents: false});
-					f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/zotero-google-docs-integration/`
-						+ parts.slice(i+3).join('/');
-					console.log(`-> ${f.path.slice(f.cwd.length)}`);
-					this.push(f);
-				});
-			}
-			cb();
-		}.bind(this);
-		
-		var asyncAddFiles = false;
 		// Replace contents
 		switch (basename) {
 			case 'zotero_config.js':
@@ -275,7 +232,11 @@ function processFile() {
 			case 'zotero.js':
 				if (!argv.p) {
 					file.contents = Buffer.from(file.contents.toString()
-						.replace('"debug.log": false', '"debug.log": true'));
+						.replace('"debug.log": false', '"debug.log": true')
+						// TODO: Replace with remote code repo URL once it is set up
+						.replace('"integration.googleDocs.codeRepositoryURL": ""',
+							'"integration.googleDocs.codeRepositoryURL": "http://127.0.0.1:8090/"')
+					);
 				}
 				break;
 			case 'manifest.json':
@@ -284,16 +245,12 @@ function processFile() {
 						backgroundIncludeBrowserExt.map((s) => `"${s}"`).join(',\n\t\t\t'))
 					.replace("/*INJECT SCRIPTS*/",
 						injectIncludeBrowserExt.map((s) => `"${s}"`).join(',\n\t\t\t'))
-					.replace(/"version": "[^"]*"/, '"version": "'+argv.version+'"'));
+					.replace(/"version": "[^"]*"/, '"version": "' + argv.connectorVersion + '"'));
 				break;
 			case 'background.js':
 				file.contents = Buffer.from(file.contents.toString()
 					.replace("/*INJECT SCRIPTS*/", 
 						injectIncludeBrowserExt.map((s) => `"${s}"`).join(',\n\t\t')));
-				break;
-			case 'global.html':
-				file.contents = Buffer.from(replaceScriptsHTML(
-					file.contents.toString(), "<!--SCRIPTS-->", backgroundInclude));
 				break;
 			case 'preferences.html':
 			case 'progressWindow.html':
@@ -301,31 +258,76 @@ function processFile() {
 				file.contents = Buffer.from(file.contents.toString()
 					.replace(/<!--BEGIN DEBUG-->([\s\S]*?)<!--END DEBUG-->/g, argv.p ? '' : '$1'));
 				break;
-			case 'Info.plist':
-				file.contents = Buffer.from(file.contents.toString()
-					.replace("<!--SCRIPTS-->",
-						injectIncludeSafari.map((s) => `<string>${s}</string>`).join('\n\t\t\t\t'))
-					.replace(/(<key>(?:CFBundleShortVersionString|CFBundleVersion)<\/key>\s*)<string>[^<]*<\/string>/g,
-						 '$1<string>'+argv.version+'</string>'));
-				break;
 			case 'node_modules.js':
-				asyncAddFiles = true;
-				// Stream needs to be converted to a buffer because of complicated stream cloning quantum bugs
-				browserify(file).bundle((err, buf) => {file.contents = buf; addFiles(file)});
+				await new Promise((resolve) => {
+					// Stream needs to be converted to a buffer because of complicated stream cloning quantum bugs
+					// so we cannot just do file = browserify.bundle()
+					//   Also
+					// We used to be able to pass in the whole file object here before gulp 4.
+					// It doesn't work anymore and produces weird minified content
+					// so we pass in the file path instead which works well
+					browserify(file.path).bundle((err, buf) => {file.contents = buf; resolve()});
+				});
 				break;
 		}
 		
-		if (!asyncAddFiles) {
-			addFiles(file);
+		let f;
+		
+		// Amend paths
+		if (type === 'common' || type === 'browserExt') {
+			if (file.path.includes('.html')) {
+				file.contents = Buffer.from(replaceScriptsHTML(
+					file.contents.toString(), "<!--SCRIPTS-->", injectIncludeBrowserExt.map(s => `../../${s}`)));
+			}
+			['chrome', 'firefox'].forEach((browser) => {
+				f = file.clone({contents: false});
+				if (basename == 'zotero.js') {
+					let contents = f.contents.toString()
+						.replace('this.version = [^;]*', `this.version = "${argv.version}";`);
+					contents = replaceBrowser(contents, { browserExt: true, firefox: browser == 'firefox' });
+					f.contents = Buffer.from(contents);
+				}
+				f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/` + parts.slice(i+1).join('/');
+				console.log(`-> ${f.path.slice(f.cwd.length)}`);
+				this.push(f);
+			});
 		}
+		if (type === 'common' || type === 'safari') {
+			f = file.clone({contents: false});
+			f.path = parts.slice(0, i-1).join('/') + '/build/safari/' + parts.slice(i+1).join('/');
+			if (basename == 'zotero.js') {
+				let contents = f.contents.toString()
+					.replace('this.version = [^;]*', `this.version = "${argv.version}";`);
+				contents = replaceBrowser(contents, { safari: true });
+				f.contents = Buffer.from(contents);
+			}
+			console.log(`-> ${f.path.slice(f.cwd.length)}`);
+			this.push(f);
+		}
+		if (type === 'zotero-google-docs-integration') {
+			f = file.clone({contents: false});
+			f.path = parts.slice(0, i-1).join('/') + '/build/safari/zotero-google-docs-integration/'
+				+ parts.slice(i+3).join('/');
+			console.log(`-> ${f.path.slice(f.cwd.length)}`);
+			this.push(f);
+			['chrome', 'firefox'].forEach((browser) => {
+				f = file.clone({contents: false});
+				f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/zotero-google-docs-integration/`
+					+ parts.slice(i+3).join('/');
+				console.log(`-> ${f.path.slice(f.cwd.length)}`);
+				this.push(f);
+			});
+		}
+		
+		cb();
 	});
 }
 
 gulp.task('watch', function () {
 	var watcher = gulp.watch(['./src/browserExt/**', './src/common/**', './src/safari/**',
 		'./src/zotero-google-docs-integration/src/connector/**']);
-	watcher.on('change', function(event) {
-		gulp.src(event.path)
+	watcher.on('change', function(path) {
+		gulp.src(path)
 			.pipe(plumber())
 			.pipe(processFile())
 			.pipe(gulp.dest((data) => data.base));
@@ -349,8 +351,6 @@ gulp.task('process-custom-scripts', function() {
 		'./src/browserExt/background.js',
 		'./src/browserExt/manifest.json',
 		'./src/browserExt/confirm.html',
-		'./src/safari/global.html',
-		'./src/safari/Info.plist',
 		'./src/common/node_modules.js',
 		'./src/common/preferences/preferences.html',
 		'./src/common/progressWindow/progressWindow.html',
@@ -364,7 +364,8 @@ gulp.task('process-custom-scripts', function() {
 	if (!argv.p) {
 		sources.push('./src/common/test/**/*.js');	
 	}
-	gulp.src(sources).pipe(plumber())
+	return gulp.src(sources)
+		.pipe(plumber())
 		.pipe(processFile())
 		.pipe(gulp.dest((data) => data.base));
 });
@@ -373,4 +374,4 @@ gulp.task('watch-bookmarklet', watchBookmarklet(argv))
 
 gulp.task('process-bookmarklet-scripts', processBookmarkletScripts(argv));
 
-gulp.task('default', ['watch']);
+gulp.task('default', gulp.series(['watch']));

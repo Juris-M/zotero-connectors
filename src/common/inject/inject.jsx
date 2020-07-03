@@ -69,7 +69,7 @@ Zotero.Inject = new function() {
 		this.sessionDetails = {};
 		
 		_noteImgSrc = Zotero.isSafari
-			? safari.extension.baseURI+"images/treeitem-note.png"
+			? `${safari.extension.baseURI}safari/`+"images/treeitem-note.png"
 			: browser.extension.getURL('images/treeitem-note.png');
 		
 		// wrap this in try/catch so that errors will reach logError
@@ -86,12 +86,12 @@ Zotero.Inject = new function() {
 			if (!_translate) {
 				_translate = this.initTranslation(document);
 				_translate.setHandler("pageModified", function() {
-					Zotero.Connector_Browser.onPageLoad();
+					Zotero.Connector_Browser.onPageLoad(document.location.href);
 					Zotero.Messaging.sendMessage("pageModified", null);
 				});
 				document.addEventListener("ZoteroItemUpdated", function() {
 					Zotero.debug("Inject: ZoteroItemUpdated event received");
-					Zotero.Connector_Browser.onPageLoad();
+					Zotero.Connector_Browser.onPageLoad(document.location.href);
 					Zotero.Messaging.sendMessage("pageModified", null);
 				}, false);
 			} else {
@@ -137,7 +137,11 @@ Zotero.Inject = new function() {
 						}
 					}
 					
-					var returnItems = await Zotero.Connector_Browser.onSelect(items);
+					if (Zotero.isBrowserExt) {
+						var returnItems = await Zotero.Connector_Browser.onSelect(items);
+					} else {
+						returnItems = await Zotero.Inject.onSafariSelect(items);
+					}
 					
 					// If items were selected, reopen the save popup
 					if (returnItems && !Zotero.Utilities.isEmpty(returnItems)) {
@@ -238,7 +242,8 @@ Zotero.Inject = new function() {
 	this.loadReactComponents = async function(components=[]) {
 		if (Zotero.isSafari) return;
 		var toLoad = [];
-		if (typeof ReactDOM === "undefined") {
+		if (typeof ReactDOM === "undefined" || typeof React === "undefined"
+				|| !React.useState) {
 			toLoad = [
 				'lib/react.js',
 				'lib/react-dom.js',
@@ -450,7 +455,14 @@ Zotero.Inject = new function() {
 				} else {
 					// Clear session details on failure, so another save click tries again
 					this.sessionDetails = {};
+					// We delay opening the progressWindow for multiple items so we don't have to flash it
+					// for the select dialog. But it comes back to bite us in the butt if a translation
+					// error occurs immediately since the below command will execute before the progressWindow show,
+					// and then the delayed progressWindow.show will pop up another empty progress window.
+					// Cannot have that!
+					await Zotero.Promise.delay(500);
 					Zotero.Messaging.sendMessage("progressWindow.done", [false]);
+					return;
 				}
 			}
 		}
@@ -587,14 +599,19 @@ try {
 	isHiddenIFrame = !isTopWindow && window.frameElement && window.frameElement.style.display === "none";
 } catch(e) {}
 
+const isWeb = window.location.protocol === "http:" || window.location.protocol === "https:";
+const isTestPage = Zotero.isBrowserExt && window.location.href.startsWith(browser.extension.getURL('test'));
 // don't try to scrape on hidden frames
-let isWeb = window.location.protocol === "http:" || window.location.protocol === "https:";
-let isTestPage = Zotero.isBrowserExt && window.location.href.startsWith(browser.extension.getURL('test'))
-	|| Zotero.isSafari && window.location.href.startsWith(safari.extension.baseURI + 'test');
 if(!isHiddenIFrame) {
-	var doInject = function () {
-		Zotero.initInject();
+	var doInject = async function () {
+		await Zotero.initInject();
+
+		if (Zotero.isSafari && isTopWindow) {
+			Zotero.Connector_Browser.onPageLoad(document.location.href);
+		}
 		
+		// Do not run on non-web pages (file://), test pages, safari extension pages (i.e. safari prefs)
+		// or non-top Safari pages
 		if (!isWeb && !isTestPage) return;
 		// add listener for translate message from extension
 		Zotero.Messaging.addMessageListener("translate", function(data) {
@@ -614,11 +631,13 @@ if(!isHiddenIFrame) {
 		Zotero.Messaging.addMessageListener("pageModified", function() {
 			Zotero.Inject.init(true);
 		});
+		Zotero.Messaging.addMessageListener('historyChanged', function() {
+			Zotero.Inject.init(true);
+		});
+		
 		Zotero.Messaging.addMessageListener("firstUse", function () {
 			return Zotero.Inject.firstUsePrompt();
 		});
-
-		if (Zotero.isSafari && isTopWindow) Zotero.Connector_Browser.onPageLoad();
 
 		if(document.readyState !== "complete") {
 			window.addEventListener("load", function(e) {
@@ -641,3 +660,4 @@ if(!isHiddenIFrame) {
 		doInject();
 	}
 }
+

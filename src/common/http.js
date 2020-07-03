@@ -61,7 +61,7 @@ Zotero.HTTP = new function() {
 	 *     request succeeds, or rejected if the browser is offline or a non-2XX status response
 	 *     code is received (or a code not in options.successCodes if provided).
 	 */
-	this.request = function(method, url, options = {}) {
+	this.request = async function(method, url, options = {}) {
 		// Default options
 		options = Object.assign({
 			body: null,
@@ -84,7 +84,7 @@ Zotero.HTTP = new function() {
 			// include Referer. Chrome's XHR in content scripts includes Referer by default.
 			//
 			// [1] https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Content_scripts#XHR_and_Fetch
-			if (Zotero.HTTP.isSameOrigin(url)) {
+			if (Zotero.HTTP.isSameOrigin(url) && !(Zotero.isSafari && options.headers['User-Agent'])) {
 				if (typeof content != 'undefined' && content.XMLHttpRequest) {
 					Zotero.debug("Using content XHR");
 					useContentXHR = true;
@@ -101,6 +101,9 @@ Zotero.HTTP = new function() {
 					let coOptions = Object.assign({}, options);
 					if (isDocRequest) {
 						coOptions.responseType = 'text';
+					}
+					if (Zotero.isSafari && options.headers['User-Agent']) {
+						coOptions.headers['Cookie'] = document.cookie;
 					}
 					return Zotero.COHTTP.request(method, url, coOptions).then(function (xmlhttp) {
 						if (!isDocRequest) return xmlhttp;
@@ -146,6 +149,10 @@ Zotero.HTTP = new function() {
 			// Don't display password or session id in console
 			logBody = logBody.replace(/password":"[^"]+/, 'password":"********');
 			logBody = logBody.replace(/password=[^&]+/, 'password=********');
+		}
+		if (options.headers['User-Agent'] && Zotero.isBrowserExt) {
+			await Zotero.WebRequestIntercept.replaceUserAgent(url, options.headers['User-Agent']);
+			delete options.headers['User-Agent'];
 		}
 		Zotero.debug(`HTTP ${method} ${url}${logBody}`);
 		

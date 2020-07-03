@@ -1,7 +1,7 @@
 /*
 	***** BEGIN LICENSE BLOCK *****
 	
-	Copyright © 2017 Center for History and New Media
+	Copyright © 2020 Center for History and New Media
 					George Mason University, Fairfax, Virginia, USA
 					http://zotero.org
 	
@@ -23,29 +23,20 @@
 	***** END LICENSE BLOCK *****
 */
 
-/**
- * Stored via Swift UserDefaults
- */
-Zotero.Prefs = Object.assign(Zotero.Prefs, {
-	init: async function() {
-		let prefsJSON = await Zotero.Messaging.sendMessage('Swift.getPrefs');
-		let prefs = JSON.parse(prefsJSON);
-		this.syncStorage = Object.assign({}, prefs);
-	},
-
-	set: async function(pref, value) {
-		Zotero.debug("Setting "+pref+" to "+JSON.stringify(value).substr(0, 100));
-		this.syncStorage[pref] = value;
-		await Zotero.Messaging.sendMessage('Swift.setPrefs', JSON.stringify(this.syncStorage));
-	},
-
-	clear: async function(pref) {
-		if (!Array.isArray(pref)) {
-			pref = [pref]
-		}
-		pref.forEach((p) => {
-			delete this.syncStorage[p];
-		});
-		await Zotero.Messaging.sendMessage('Swift.setPrefs', JSON.stringify(this.syncStorage));
+module.exports = function(filetext, config) {
+	// Defaults to all false, so just need to set true flags in the build script
+	config = Object.assign({
+		bookmarklet: false,
+		firefox: false,
+		safari: false,
+		browserExt: false
+	}, config);
+	for (let browserOption in config) {
+		let value = config[browserOption];
+		browserOption = browserOption[0].toUpperCase() + browserOption.slice(1);
+		let regexp = new RegExp(`/\\* this\\.is${browserOption} = SET IN BUILD SCRIPT \\*/`);
+		filetext = filetext.replace(regexp,
+			`this.is${browserOption} = ${value}`)
 	}
-});
+	return filetext
+}

@@ -26,31 +26,62 @@
 var Zotero = window.Zotero = new function() {
 	this.version = "5.0";
 	this.isConnector = true;
-	this.isFx = false;
+	this.isFx = false; // Old flag for 4.0 connector, probably not used anymore
+	/* this.isBookmarklet = SET IN BUILD SCRIPT */;
 	
+	this.initialized = false;
 	this.initDeferred = {};
 	this.initDeferred.promise = new Promise(function(resolve, reject) {
 		this.initDeferred.resolve = resolve;
 		this.initDeferred.reject = reject;
 	}.bind(this));
+	
+	// Safari  global page detection
+	if (typeof globalThis != "undefined" && typeof browser == "undefined") {
+		this.isSafari = true;
+		this.isMac = true;
+	}
+	else {
+		// Browser check adopted from:
+		// http://stackoverflow.com/questions/9847580/how-to-detect-safari-chrome-ie-firefox-and-opera-browser
+		// Internet Explorer 6-11
+		this.isIE = /*@cc_on!@*/false || !!document.documentMode;;
+		if (this.isBookmarklet) {
+			// Firefox 1.0+
+			this.isFirefox = typeof InstallTrigger !== 'undefined';
+			// Edge 20+
+			this.isEdge = !this.isIE && !!window.StyleMedia;
+			// Chrome and Chromium
+			this.isChrome = window.navigator.userAgent.indexOf("Chrome") !== -1 || window.navigator.userAgent.indexOf("Chromium") !== -1;
+			// At least Safari 10+
+			this.isSafari = window.navigator.userAgent.includes("Safari") && !this.isChrome;
+			this.isBrowserExt = this.isFirefox || this.isEdge || this.isChrome;
 
-	// Browser check adopted from:
-	// http://stackoverflow.com/questions/9847580/how-to-detect-safari-chrome-ie-firefox-and-opera-browser
-	// Firefox 1.0+
-	this.isFirefox = typeof InstallTrigger !== 'undefined';
-	// Internet Explorer 6-11
-	this.isIE = /*@cc_on!@*/false || !!document.documentMode;
-	// Edge 20+
-	this.isEdge = !this.isIE && !!window.StyleMedia;
-	// Chrome and Chromium
-	this.isChrome = window.navigator.userAgent.indexOf("Chrome") !== -1 || window.navigator.userAgent.indexOf("Chromium") !== -1;
-	// At least Safari 10+
-	this.isSafari = window.navigator.userAgent.includes("Safari") && !this.isChrome;
-	this.isBrowserExt = this.isFirefox || this.isEdge || this.isChrome;
+			this.isMac = (window.navigator.platform.substr(0, 3) == "Mac");
+			this.isWin = (window.navigator.platform.substr(0, 3) == "Win");
+			this.isLinux = (window.navigator.platform.substr(0, 5) == "Linux");	
+		} else {
+			/* this.isFirefox = SET IN BUILD SCRIPT */;
+			/* this.isSafari = SET IN BUILD SCRIPT */;
+			/* this.isBrowserExt = SET IN BUILD SCRIPT */;
+			
+			this.isChrome = this.isEdge = false;
+			if (this.isBrowserExt && !this.isFirefox) {
+				if (window.navigator.userAgent.includes("Edg/")) {
+					this.isEdge = true;
+				} else {
+					// If browser ext is not fx or edge then treat it as Chrome
+					// since it's probably installed with compatible browsers such as Opera from the
+					// Chrome extension store
+					this.isChrome = true;
+				}
+			}
+		}
 
-	this.isMac = (window.navigator.platform.substr(0, 3) == "Mac");
-	this.isWin = (window.navigator.platform.substr(0, 3) == "Win");
-	this.isLinux = (window.navigator.platform.substr(0, 5) == "Linux");
+		this.isMac = (window.navigator.platform.substr(0, 3) == "Mac");
+		this.isWin = (window.navigator.platform.substr(0, 3) == "Win");
+		this.isLinux = (window.navigator.platform.substr(0, 5) == "Linux");
+	}
 
 	if (this.isFirefox) {
 		this.browser = "g";
@@ -72,18 +103,13 @@ var Zotero = window.Zotero = new function() {
 		this.browser = "i";
 		this.clientName = window.navigator.appName;
 	}
-	this.appName = `Zotero Connector for ${this.clientName}`;
+	this.appName = `${ZOTERO_CONFIG.CLIENT_NAME} Connector for ${this.clientName}`;
 	
-	// this.isBookmarklet is not set until after this runs
-	setTimeout(() => {
-		if (!this.isBookmarklet) {
-			if (this.isBrowserExt) {
-				this.version = browser.runtime.getManifest().version;
-			} else if (this.isSafari) {
-				this.version = safari.extension.bundleVersion;
-			}
+	if (!this.isBookmarklet) {
+		if (this.isBrowserExt) {
+			this.version = browser.runtime.getManifest().version;
 		}
-	});
+	}
 	
 	// window.Promise and Promise differ (somehow) in Firefox and when certain
 	// async promise resolution conditions arise upon calling Zotero.Promise.all().then(result => )
@@ -184,11 +210,15 @@ var Zotero = window.Zotero = new function() {
 			});
 		}
 
+		Zotero.Messaging.init();
+		if (Zotero.isSafari) {
+			this.version = await Zotero.Connector_Browser.getExtensionVersion();
+			window.safari = {extension: {baseURI: await Zotero.Messaging.sendMessage('Swift.getBaseURI')}};
+		}
+		Zotero.Connector_Types.init();
 		await Zotero.Prefs.init();
 		
 		Zotero.Debug.init();
-		Zotero.Messaging.init();
-		Zotero.Connector_Types.init();
 		if (Zotero.isBrowserExt) {
 			Zotero.WebRequestIntercept.init();
 		}
@@ -197,7 +227,11 @@ var Zotero = window.Zotero = new function() {
 			Zotero.Repo.init();
 			Zotero.Proxies.init();
 		}
+		if (Zotero.isBrowserExt) {
+			await Zotero.GoogleDocsPluginManager.init();
+		}
 		Zotero.initDeferred.resolve();
+		Zotero.initialized = true;
 
 		await Zotero.migrate();
 	};
@@ -221,6 +255,7 @@ var Zotero = window.Zotero = new function() {
 		
 		Zotero.Debug.init();
 		Zotero.initDeferred.resolve();
+		Zotero.initialized = true;
 	};
 	
 	
@@ -228,13 +263,22 @@ var Zotero = window.Zotero = new function() {
 	 * Get versions, platform, etc.
 	 */
 	this.getSystemInfo = async function() {
-		var info = {
-			connector: "true",
-			version: this.version,
-			platform: navigator.platform,
-			locale: navigator.language,
-			userAgent: navigator.userAgent
-		};
+		var info;
+		if (Zotero.isSafari && Zotero.isBackground) {
+			info = {
+				connector: "true",
+				version: this.version,
+				platform: "Safari App Extension",
+			};
+		} else {
+			info = {
+				connector: "true",
+				version: this.version,
+				platform: navigator.platform,
+				locale: navigator.language,
+				userAgent: navigator.userAgent
+			};
+		}
 		
 		info.appName = Zotero.appName;
 		info.zoteroAvailable = !!(await Zotero.Connector.checkIsOnline());
@@ -340,6 +384,7 @@ Zotero.Prefs = new function() {
 		"connector.url": 'http://127.0.0.1:24119/',
 		"capitalizeTitles": false,
 		"interceptKnownFileTypes": true,
+		"allowedCSLExtensionHosts": ["raw.githubusercontent.com"],
 		"allowedInterceptHosts": [],
 		"firstUse": true,
 		"firstSaveToServer": true,
@@ -355,6 +400,9 @@ Zotero.Prefs = new function() {
 		"proxies.clientChecked": false,
 		
 		"integration.googleDocs.enabled": true,
+		// TODO: Add a remote repo URL (with trailing slash) once it is set up
+		"integration.googleDocs.codeRepositoryURL": "",
+		"integration.googleDocs.repoCheckInterval": 24 * 60 * 60 * 1000, // 24hrs
 		
 		"shortcuts.cite": {ctrlKey: true, altKey: true, key: 'c'}
 	};
@@ -432,7 +480,7 @@ Zotero.Prefs = new function() {
 	 * @param value
 	 */
 	this.set = function(pref, value) {
-		Zotero.debug("Setting "+pref+" to "+JSON.stringify(value));
+		Zotero.debug("Setting "+pref+" to "+JSON.stringify(value).substr(0, 100));
 		this.syncStorage[pref] = value;
 	};
 

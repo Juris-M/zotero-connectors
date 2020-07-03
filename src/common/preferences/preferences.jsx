@@ -42,6 +42,7 @@ var Zotero_Preferences = {
 	init: async function() {
 		Zotero.isPreferences = true;
 		Zotero.Messaging.init();
+		await Zotero.i18n.init();
 		
 		var panesDiv = document.getElementById("panes");
 		var id;
@@ -74,9 +75,11 @@ var Zotero_Preferences = {
 			checkbox.checked = await Zotero.Prefs.getAsync(checkbox.dataset.pref);
 		}
 
-		Zotero.Prefs.loadNamespace('proxies').then(function() {
-			Zotero_Preferences.Proxies.init();
-		});
+		if (Zotero.isBrowserExt) {
+			Zotero.Prefs.loadNamespace('proxies').then(function() {
+				Zotero_Preferences.Proxies.init();
+			});
+		}
 
 		Zotero.Prefs.loadNamespace('shortcuts').then(function() {
 			let spans = document.querySelectorAll('.shortcut-input[data-pref]');
@@ -86,6 +89,15 @@ var Zotero_Preferences = {
 		});
 
 		Zotero.initDeferred.resolve();
+		Zotero.isInject = true;
+		
+		if (Zotero.isSafari) {
+			// BrowserExt handles these in the background page
+			window.addEventListener('focus', function() {
+				Zotero.Connector_Browser.onTabFocus();
+			}, true);
+			Zotero.Connector_Browser.onTabFocus();
+		}
 		Zotero_Preferences.refreshData();
 		window.setInterval(() => Zotero_Preferences.refreshData(), 1000);
 	},
@@ -196,7 +208,7 @@ Zotero_Preferences.General = {
 	 */
 	openTranslatorTester: function() {
 		if(Zotero.isSafari) {
-			window.open(safari.extension.baseURI+"tools/testTranslators/testTranslators.html", "translatorTester");
+			window.open(`${safari.extension.baseURI}safari/`+"tools/testTranslators/testTranslators.html", "translatorTester");
 		} else if(Zotero.isBrowserExt) {
 			window.open(browser.extension.getURL("tools/testTranslators/testTranslators.html"), "translatorTester");
 		}
@@ -205,6 +217,7 @@ Zotero_Preferences.General = {
 
 Zotero_Preferences.Proxies = {
 	init: function() {
+		document.getElementById('pane-proxies').style.display = null;
 		this.proxiesComponent = React.createElement(Zotero_Preferences.Components.ProxySettings, null);
 		ReactDOM.render(this.proxiesComponent, document.getElementById('content-proxies'));
 	}
@@ -240,7 +253,7 @@ Zotero_Preferences.Advanced = {
 		var testRunnerButton = document.getElementById("advanced-button-open-test-runner");
 		if (testRunnerButton) testRunnerButton.onclick = function() {
 			if (Zotero.isSafari) {
-				Zotero.Connector_Browser.openTab(safari.extension.baseURI + "test/test.html");
+				Zotero.Connector_Browser.openTab(`${safari.extension.baseURI}safari/` + "test/test.html");
 			} else {
 				Zotero.Connector_Browser.openTab(browser.extension.getURL(`test/test.html`));
 			}
@@ -303,14 +316,23 @@ Zotero_Preferences.Advanced = {
 			}
 		}
 		
-		return Zotero.Connector_Debug.submitReport().then(function(reportID) {
-			alert("Your debug output has been submitted.\n\n"
-				+ `The Debug ID is D${reportID}.`);
-		}, function(e) {
-			alert(`An error occurred submitting your debug output.\n\n${e.message}\n\n`+
-				'Please check your internet connection. If the problem persists, '+
-				'please post a message to the Zotero Forums (forums.zotero.org).');
-		}).then(() => toggleDisabled(submitOutputButton, false));
+		try {
+			let reportID = await Zotero.Connector_Debug.submitReport();
+			let result = await Zotero.ModalPrompt.confirm({
+				message: Zotero.getString('reports_debug_output_submitted', 'D' + reportID).replace(/\n/g, '<br/>'),
+				button1Text: "OK",
+				button2Text: Zotero.getString("general_copyToClipboard"),
+			});
+			if (result.button == 2) {
+				navigator.clipboard.writeText('D' + reportID);
+			}
+		}
+		catch (e) {
+			alert(Zotero.getString("reports_submission_failed", e.message));
+		}
+		finally {
+			toggleDisabled(submitOutputButton, false);
+		}
 	},
 
 	/**
@@ -331,14 +353,16 @@ Zotero_Preferences.Advanced = {
 		
 		try {
 			var reportID = await Zotero.Errors.sendErrorReport();
-			alert(`Your error report has been submitted.\n\nReport ID: ${reportID}\n\n`+
-				'Please post a message to the Zotero Forums (forums.zotero.org) with this Report '+
-				'ID, a description of the problem, and any steps necessary to reproduce it.\n\n'+
-				'Error reports are not reviewed unless referred to in the forums.');
+			let result = await Zotero.ModalPrompt.confirm({
+				message: Zotero.getString('reports_report_submitted', reportID).replace(/\n/g, '<br/>'),
+				button1Text: "OK",
+				button2Text: Zotero.getString("general_copyToClipboard"),
+			});
+			if (result.button == 2) {
+				navigator.clipboard.writeText(reportID);
+			}
 		} catch(e) {
-			alert(`An error occurred submitting your error report.\n\n${e.message}\n\n`+
-				'Please check your internet connection. If the problem persists, '+
-				'please post a message to the Zotero Forums (forums.zotero.org).');
+			alert(Zotero.getString("reports_submission_failed", e.message));
 		} finally {
 			toggleDisabled(reportErrorsButton, false);
 		}
