@@ -66,7 +66,7 @@ Zotero.Connector_Browser = new function() {
 	 * @param tabId
 	 */
 	this.onPDFFrame = function(frameURL, frameId, tabId) {
-		if (_tabInfo[tabId] && _tabInfo[tabId].translators) {
+		if (_tabInfo[tabId] && _tabInfo[tabId].translators && _tabInfo[tabId].translators.length) {
 			return;
 		}
 		browser.tabs.get(tabId).then(function(tab) {
@@ -328,6 +328,13 @@ Zotero.Connector_Browser = new function() {
 			clearTimeout(timeout);
 		}
 	};
+
+	this.injectSingleFile = async function(tab, frameId) {
+		Zotero.debug("SingleFile: injecting SingleFile into page");
+		await singlefile.extension.injectScript(tab.id, {});
+		// Also insert the config object
+		await this.injectScripts('singlefile-config.js', tab, frameId);
+	};
 	
 	this.openWindow = async function(url, options={}, tab=null) {
 		if (!tab) {
@@ -445,6 +452,10 @@ Zotero.Connector_Browser = new function() {
 	 * Update status and tooltip of Zotero button
 	 */
 	this._updateExtensionUI = function (tab) {
+		if (!tab) {
+			return chrome.tabs.query( { lastFocusedWindow: true, active: true },
+				(tabs) => tabs.length && this._updateExtensionUI(tabs[0]));
+		}	
 		if (Zotero.Prefs.get('firstUse') && Zotero.isFirefox) return _showFirstUseUI(tab);
 		if (!tab.active) return;
 		browser.contextMenus.removeAll();
@@ -545,8 +556,7 @@ Zotero.Connector_Browser = new function() {
 	function _isDisabledForURL(url, excludeTests=false) {
 		return url.startsWith('chrome://') ||
 			url.startsWith('about:') ||
-			url.startsWith('chrome-') ||
-			(url.includes('-extension://') && (!excludeTests || !url.includes('/test/data/')));
+			(url.startsWith(browser.runtime.getURL('')) && (!excludeTests || !url.includes('/test/data/')));
 	}
 	
 	function _showZoteroStatus(tabID) {
@@ -834,7 +844,12 @@ Zotero.Connector_Browser = new function() {
 		// Ignore developer tools, item selector
 		if (details.tabId < 0 || _isDisabledForURL(details.url, true)
 			|| details.url.indexOf(browser.extension.getURL("itemSelector/itemSelector.html")) === 0) return;
-
+		
+		// Don't process again if URL hasn't changed
+		if (_tabInfo[details.tabId] && _tabInfo[details.tabId].url == details.url) {
+			return Zotero.Connector_Browser._updateExtensionUI(tab);
+		}
+		
 		if (details.frameId == 0) {
 			_updateInfoForTab(details.tabId, details.url);
 			// Getting the tab is uber slow in Firefox. Since _updateInfoForTab() resets the

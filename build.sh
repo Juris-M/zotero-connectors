@@ -244,6 +244,8 @@ function copyResources {
 	# Copy google docs integration code
 	cp -r "$SRCDIR/zotero-google-docs-integration/src/connector" \
 		 "$browser_builddir/zotero-google-docs-integration"
+	cp -r "$SRCDIR/zotero-google-docs-integration/package.json" \
+		 "$browser_builddir/zotero-google-docs-integration"
 		 
 	# Copy locales
 	mkdir -p "$browser_builddir/_locales/en"
@@ -286,6 +288,14 @@ function copyResources {
 	
 	# Remove .jsx files - we'll deal with those in gulp
 	find "$browser_builddir" -type f -name "*.jsx" -delete
+
+	# Copy SingleFile submodule code
+	mkdir -p "$browser_builddir/lib/SingleFile/extension/lib"
+	cp -r "$SRCDIR/zotero/resource/SingleFile/extension/lib/single-file" \
+		"$browser_builddir/lib/SingleFile/extension/lib/single-file"
+	cp -r "$SRCDIR/zotero/resource/SingleFile/lib" "$browser_builddir/lib/SingleFile/lib"
+	# Copy SingleFile config object from client code
+	cp "$SRCDIR/zotero/chrome/content/zotero/xpcom/singlefile.js" "$browser_builddir/singlefile-config.js"
 	
 	if [ ! -z $DEBUG ]; then
 		cp "$SRCDIR/zotero/chrome/content/zotero/tools/testTranslators"/*.js \

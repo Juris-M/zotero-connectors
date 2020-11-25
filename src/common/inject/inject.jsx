@@ -502,8 +502,10 @@ Zotero.Inject = new function() {
 			sessionID,
 			url: document.location.toString(),
 			cookie: document.cookie,
+			title: title,
 			html: document.documentElement.innerHTML,
-			skipSnapshot: !options.snapshot
+			skipSnapshot: !options.snapshot,
+			singleFile: true
 		};
 
 		var image;
@@ -519,11 +521,12 @@ Zotero.Inject = new function() {
 			"progressWindow.itemProgress",
 			{
 				sessionID,
-				id: title,
+				id: 1,
 				iconSrc: Zotero.ItemTypes.getImageSrc(image),
 				title: title
 			}
 		);
+
 		try {
 			var result = await Zotero.Connector.callMethodWithCookies("saveSnapshot", data);
 			Zotero.Messaging.sendMessage("progressWindow.sessionCreated", { sessionID });
@@ -531,13 +534,74 @@ Zotero.Inject = new function() {
 				"progressWindow.itemProgress",
 				{
 					sessionID,
-					id: title,
+					id: 1,
 					iconSrc: Zotero.ItemTypes.getImageSrc(image),
 					title,
 					parentItem: false,
 					progress: 100
 				}
 			);
+
+			// Once snapshot item is created, if requested, run SingleFile
+			if (result && result.saveSingleFile) {
+				let progressItem = {
+					sessionID,
+					id: 2,
+					iconSrc: Zotero.ItemTypes.getImageSrc("attachment-snapshot"),
+					title: "Snapshot",
+					parentItem: 1,
+					progress: 0
+				};
+
+				Zotero.Messaging.sendMessage("progressWindow.itemProgress", progressItem);
+
+				try {
+					data.snapshotContent = await Zotero.SingleFile.retrievePageData();
+				}
+				catch (e) {
+					// Swallow error, will fallback to save in client
+					Zotero.Messaging.sendMessage("progressWindow.itemProgress", { ...progressItem, ...{ progress: false } });
+				}
+
+				try {
+					result = await Zotero.Connector.callMethodWithCookies({
+							method: "saveSingleFile",
+							headers: {"Content-Type": "application/json"}
+						},
+						data
+					);
+
+					Zotero.Messaging.sendMessage("progressWindow.itemProgress", { ...progressItem, ...{ progress: 100 } });
+				}
+				catch (e) {
+					if (e.status === 400 && e.value === 'Endpoint does not support content-type\n') {
+						let snapshotContent = data.snapshotContent;
+						delete data.snapshotContent;
+
+						data.pageData = {
+							content: snapshotContent,
+							resources: {}
+						};
+
+						// This means a Zotero client that expects SingleFileZ. We can just feed
+						// it a payload it is expecting with no resources.
+						result = await Zotero.Connector.callMethodWithCookies({
+								method: "saveSingleFile",
+								headers: {"Content-Type": "multipart/form-data"}
+							},
+							{
+								payload: JSON.stringify(data)
+							}
+						);
+
+						Zotero.Messaging.sendMessage("progressWindow.itemProgress", { ...progressItem, ...{ progress: 100 } });
+					}
+					else {
+						throw e;
+					}
+				}
+			}
+
 			Zotero.Messaging.sendMessage("progressWindow.done", [true]);
 			Object.assign(this.sessionDetails, {
 				id: sessionID,
@@ -640,9 +704,9 @@ if(!isHiddenIFrame) {
 		});
 
 		if(document.readyState !== "complete") {
-			window.addEventListener("load", function(e) {
+			window.addEventListener("pageshow", function(e) {
 				if(e.target !== document) return;
-				Zotero.Inject.init();
+				Zotero.Inject.init(true);
 			}, false);
 		} else {	
 			Zotero.Inject.init();
