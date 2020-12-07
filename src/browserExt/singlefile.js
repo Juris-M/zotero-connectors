@@ -41,7 +41,7 @@ Zotero.SingleFile = {
 			// If css is present in attachmentInfo, attempt to process with Jurism trim
 			// params, if any.
 			if (attachmentInfo.css) {
-                Zotero.debug(`Jurism: trimming page content`);
+				Zotero.debug(`Jurism: trimming page content`);
 				// Clip body content from serialized HTML and push it into a dummy document
 				var content = pageData.content;
 				var offset = content.indexOf("<body");
@@ -84,8 +84,9 @@ Zotero.SingleFile = {
 						+ "    <style>" + attachmentInfo.css + "</style>\n"
 						+ "  </head>"
 						+ "  <body>\n"
+						+ "  <h2>" + attachmentInfo.title + "</h2>\n"
 						+ dummy.innerHTML
-						+ "    <hr/>\n"
+						+ "    <p><hr/></p>\n"
 						+ "    <p><b>Source:</b><a href=\"" +attachmentInfo.url + "\">" + attachmentInfo.url + "</a></p>"
 						+ "  </body>\n"
 						+ "</html>";
