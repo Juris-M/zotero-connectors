@@ -161,8 +161,9 @@ Zotero.Translate.ItemSaver.prototype = {
 	},
 
 	_executeSingleFile: async function(payload) {
+        Zotero.debug(`XXXZ PAYLOAD=${JSON.stringify(payload)}`);
 		try {
-			payload.snapshotContent = await Zotero.SingleFile.retrievePageData();
+			payload.snapshotContent = await Zotero.SingleFile.retrievePageData(payload);
 		}
 		catch (e) {
 			// We swallow this error and fall back to saving the
