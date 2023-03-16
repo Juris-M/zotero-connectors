@@ -49,14 +49,18 @@ if (isTopWindow) {
  */
 Zotero.Inject = new function() {
 	var _translate;
-	var _noteImgSrc;
+	// Used to display a different message for failing translations on pages
+	// with site-access limits
+	const siteAccessLimitsTranslators = new Set([
+		"57a00950-f0d1-4b41-b6ba-44ff0fc30289" // GoogleScholar
+	]);
 	this.sessionDetails = {};
 	this.translators = [];
 		
 	/**
 	 * Initializes the translate machinery and determines whether this page can be translated
 	 */
-	this.init = function(force) {	
+	this.init = async function(force) {	
 		// On OAuth completion, close window and call completion listener
 		if(document.location.href.substr(0, ZOTERO_CONFIG.OAUTH.ZOTERO.CALLBACK_URL.length+1) === ZOTERO_CONFIG.OAUTH.ZOTERO.CALLBACK_URL+"?") {
 			Zotero.API.onAuthorizationComplete(document.location.href.substr(ZOTERO_CONFIG.OAUTH.ZOTERO.CALLBACK_URL.length+1));
@@ -67,10 +71,6 @@ Zotero.Inject = new function() {
 		// Reset session on every init so a new save is triggered after JS-based changes
 		// (monitorDOMChanges/ZoteroItemUpdated)
 		this.sessionDetails = {};
-		
-		_noteImgSrc = Zotero.isSafari
-			? `${safari.extension.baseURI}safari/`+"images/treeitem-note.png"
-			: browser.extension.getURL('images/treeitem-note.png');
 		
 		// wrap this in try/catch so that errors will reach logError
 		try {
@@ -84,7 +84,7 @@ Zotero.Inject = new function() {
 			if(document.location == "about:blank") return;
 
 			if (!_translate) {
-				_translate = this.initTranslation(document);
+				_translate = await this.initTranslation(document);
 				_translate.setHandler("pageModified", function() {
 					Zotero.Connector_Browser.onPageLoad(document.location.href);
 					Zotero.Messaging.sendMessage("pageModified", null);
@@ -95,7 +95,8 @@ Zotero.Inject = new function() {
 					Zotero.Messaging.sendMessage("pageModified", null);
 				}, false);
 			} else {
-				_translate.setDocument(document);
+				// Async in MV3
+				await (async () => _translate.setDocument(document))();
 			}
 			return _translate.getTranslators(true).then(function(translators) {
 				if (!translators.length && Zotero.isSafari) {
@@ -113,9 +114,23 @@ Zotero.Inject = new function() {
 		}
 	};
 	
-	this.initTranslation = function (document, sessionID) {
-		var translate = new Zotero.Translate.Web();
-		translate.setDocument(document);
+	this.initTranslation = async function (document, sessionID) {
+		let translate;
+		if (Zotero.isManifestV3) {
+			try {
+				await Zotero.SandboxedTranslateManager.initVirtualTranslate();
+				translate = Zotero.SandboxedTranslateManager.virtualTranslate;
+			} catch (e) {
+				Zotero.logError(new Error(`Inject: Initializing translate failed at ${document.location.href}`));
+				Zotero.logError(e);
+				throw e;
+			}
+		}
+		else {
+			translate = new Zotero.Translate.Web();
+		}
+		// Async in MV3
+		await (async () => translate.setDocument(document))();
 		if (sessionID) {
 			translate.setHandler("select", function(obj, items, callback) {
 				// Close the progress window before displaying Select Items
@@ -195,7 +210,7 @@ Zotero.Inject = new function() {
 							{
 								sessionID,
 								id: null,
-								iconSrc: _noteImgSrc,
+								iconSrc: Zotero.getExtensionURL("images/treeitem-note.png"),
 								title: Zotero.Utilities.cleanTags(note.note),
 								parentItem: item.id,
 								progress: 100
@@ -219,7 +234,7 @@ Zotero.Inject = new function() {
 			});
 		}
 		return translate;
-	}
+	};
 	
 	function determineAttachmentIcon(attachment) {
 		if(attachment.linkMode === "linked_url") {
@@ -260,7 +275,8 @@ Zotero.Inject = new function() {
 		}
 	}
 
-	this.confirm = function(props) {
+	this.confirm = async function(props) {
+		await Zotero.initializedPromise;
 		return Zotero.ModalPrompt.confirm(props);
 	};
 
@@ -297,16 +313,38 @@ Zotero.Inject = new function() {
 			return lastChainedPromise;
 		}
 	};
+	
+	this.expiredBetaBuildPrompt = function () {
+		return this.confirm({
+			title: "Build Expired",
+			button1Text: "OK",
+			button2Text: "",
+			message: `This Zotero Connector beta build has expired. Please download the latest version from zotero.org.`
+		});
+	};
 
 	this.firstUsePrompt = function () {
+		var clientName = ZOTERO_CONFIG.CLIENT_NAME;
 		return this.confirm({
-			title: "You’ve installed the Juris-M Connector!",
-			button1Text: "Got it",
+			title: Zotero.getString('firstRun_title', clientName),
+			button1Text: Zotero.getString('firstRun_acceptButton'),
 			button2Text: "",
-			message: `
-				The Juris-M Connector enables you to save references to Juris-M from your web browser in a single click.<br><br>
-				<em><strong>Looking for your Juris-M data?</strong> There have been some <a href="https://www.zotero.org/blog/a-unified-zotero-experience/">important changes</a> to the way Zotero (and therefore Juris-M) works in Firefox. If you were previously using Juris-M for Firefox, you’ll need to <a href="https://juris-m.github.io/downloads/">download</a> the standalone Juris-M application to access your local Juris-M data going forward.</em>
-			`
+			message: Zotero.getString(
+					'firstRun_text1',
+					[
+						clientName,
+						"https://www.zotero.org/support/adding_items_to_zotero"
+					]
+				)
+				+ '<br><br>'
+				+ Zotero.getString(
+					'firstRun_text2',
+					[
+						clientName,
+						// TODO: Make download URL configurable (instead of just base URL + "download")
+						ZOTERO_CONFIG.WWW_BASE_URL + "download/"
+					]
+				)
 		});
 	};
 	
@@ -425,7 +463,7 @@ Zotero.Inject = new function() {
 			saveOptions: options
 		};
 		
-		var translate = this.initTranslation(document, sessionID);
+		var translate = await this.initTranslation(document, sessionID);
 		var translators = [...this.translators];
 		while (translators[0].translatorID != translatorID) {
 			translators.shift();
@@ -438,6 +476,7 @@ Zotero.Inject = new function() {
 				Zotero.Messaging.sendMessage("progressWindow.done", [true]);
 				return items;
 			} catch (e) {
+				let errorMessage = e.toString();
 				// TEMP: Remove once client switches automatically (added in 5.0.46)
 				if (e.value && e.value.libraryEditable == false) {
 					// Allow another attempt to save again
@@ -445,6 +484,16 @@ Zotero.Inject = new function() {
 					return;
 				}
 				if (translator.itemType != 'multiple') {
+					let url = '';
+					try {
+						url = errorMessage.split('HTTP request to ')[1];
+						url = url.includes(' has timed out') ? url.split(' has timed out')[0] : '';
+					} catch (e) {}
+					const isConnectorTimeout = url && url.startsWith(await Zotero.Prefs.getAsync('connector.url'));
+					if (isConnectorTimeout) {
+						Zotero.Messaging.sendMessage("progressWindow.done", [false]);
+						return;
+					}
 					if (options.fallbackOnFailure && translators.length) {
 						Zotero.Messaging.sendMessage("progressWindow.error", ['fallback', translator.label, translators[0].label]);
 					}
@@ -452,7 +501,8 @@ Zotero.Inject = new function() {
 						Zotero.Messaging.sendMessage("progressWindow.error", ['fallback', translator.label, "Save as Webpage"]);
 						return await this._saveAsWebpage({sessionID, snapshot: true});
 					}
-				} else {
+				}
+				else {
 					// Clear session details on failure, so another save click tries again
 					this.sessionDetails = {};
 					// We delay opening the progressWindow for multiple items so we don't have to flash it
@@ -461,7 +511,19 @@ Zotero.Inject = new function() {
 					// and then the delayed progressWindow.show will pop up another empty progress window.
 					// Cannot have that!
 					await Zotero.Promise.delay(500);
-					Zotero.Messaging.sendMessage("progressWindow.done", [false]);
+					const isAccessLimitingTranslator = siteAccessLimitsTranslators.has(translator.translatorID);
+					let statusCode = '';
+					try {
+						statusCode = errorMessage.match(/status code ([0-9]{3})/)[1];
+					} catch (e) {}
+					const isHTTPErrorForbidden = statusCode == '403';
+					const isHTTPErrorTooManyRequests = statusCode == '429';
+					if ((isAccessLimitingTranslator && isHTTPErrorForbidden) || isHTTPErrorTooManyRequests) {
+						Zotero.Messaging.sendMessage("progressWindow.done", [false, 'siteAccessLimits', translator.label]);
+					}
+					else {
+						Zotero.Messaging.sendMessage("progressWindow.done", [false]);
+					}
 					return;
 				}
 			}
@@ -501,6 +563,7 @@ Zotero.Inject = new function() {
 		var data = {
 			sessionID,
 			url: document.location.toString(),
+			referrer: document.referrer,
 			cookie: document.cookie,
 			title: title,
 			html: document.documentElement.innerHTML,
@@ -543,7 +606,7 @@ Zotero.Inject = new function() {
 			);
 
 			// Once snapshot item is created, if requested, run SingleFile
-			if (result && result.saveSingleFile) {
+			if (!data.pdf && result && result.saveSingleFile) {
 				let progressItem = {
 					sessionID,
 					id: 2,
@@ -664,7 +727,7 @@ try {
 } catch(e) {}
 
 const isWeb = window.location.protocol === "http:" || window.location.protocol === "https:";
-const isTestPage = Zotero.isBrowserExt && window.location.href.startsWith(browser.extension.getURL('test'));
+const isTestPage = Zotero.isBrowserExt && window.location.href.startsWith(browser.runtime.getURL('test'));
 // don't try to scrape on hidden frames
 if(!isHiddenIFrame) {
 	var doInject = async function () {
@@ -701,6 +764,15 @@ if(!isHiddenIFrame) {
 		
 		Zotero.Messaging.addMessageListener("firstUse", function () {
 			return Zotero.Inject.firstUsePrompt();
+		});
+		
+		Zotero.Messaging.addMessageListener("expiredBetaBuild", function () {
+			return Zotero.Inject.expiredBetaBuildPrompt();
+		});
+		
+		// Cannot copy to clipboard in the background page
+		Zotero.Messaging.addMessageListener("clipboardWrite", function (text) {
+			navigator.clipboard.writeText(text);
 		});
 
 		if(document.readyState !== "complete") {

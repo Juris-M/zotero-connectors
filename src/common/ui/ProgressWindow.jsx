@@ -27,18 +27,7 @@ window.Zotero = window.Zotero || {};
 Zotero.UI = Zotero.UI || {};
 Zotero.UI.style = Zotero.UI.style || {};
 
-if (Zotero.isBookmarklet) {
-	Zotero.UI.style.imageBase = ZOTERO_CONFIG.BOOKMARKLET_URL + "images/";
-}
-else if (typeof browser != 'undefined') {
-	Zotero.UI.style.imageBase = browser.extension.getURL("images/");
-}
-else if (typeof chrome != 'undefined') {
-	Zotero.UI.style.imageBase = chrome.extension.getURL("images/");
-}
-else {
-	Zotero.UI.style.imageBase = `${safari.extension.baseURI}safari/` + "images/";
-}
+Zotero.UI.style.imageBase = Zotero.getExtensionURL("images/");
 
 function getTargetType(id) {
 	return id.startsWith('L') ? 'library': 'collection';
@@ -270,21 +259,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	// Messaging
 	//
 	sendMessage(name, data = {}) {
-		if (!Zotero.isBookmarklet) {
-			return Zotero.Messaging.sendMessage(`progressWindowIframe.${name}`, data);
-		}
-		return window.top.postMessage([`progressWindowIframe.${name}`, data], "*");
+		return Zotero.Messaging.sendMessage(`progressWindowIframe.${name}`, data);
 	}
 
 	addMessageListener(name, handler) {
-		if (!Zotero.isBookmarklet) {
-			return Zotero.Messaging.addMessageListener(name, handler);
-		}
-		window.addEventListener('message', function(event) {
-			if (event.data && event.data[0] == name) {
-				handler(event.data[1]);
-			}
-		});
+		return Zotero.Messaging.addMessageListener(name, handler);
 	}
 	
 	sendUpdate() {
@@ -479,6 +458,7 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	
 	onTagsBlur() {
 		this.sendMessage('tagsblur');
+		this.sendUpdate();
 	}
 	
 	handleDone() {
@@ -706,6 +686,16 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 			let pageLink = `<a href="${url}">${pageName}</a>`;
 			let html = {
 				__html: Zotero.getString("progressWindow_error_upgradeClient", [clientName, pageLink])
+			};
+			contents = <span dangerouslySetInnerHTML={html}/>;
+		}
+		else if (err === "siteAccessLimits") {
+			const translator = `<b>${args[0]}</b>`;
+			const siteAccessURL = "https://www.zotero.org/support/kb/site_access_limits";
+			const siteAccessTitle = Zotero.getString('progressWindow_error_siteAccessLimits');
+			let siteAccessLink = `<a href="${siteAccessURL}" title="${siteAccessTitle}">${siteAccessTitle}</a>`;
+			let html = {
+				__html: Zotero.getString("progressWindow_error_siteAccessLimitsError", [translator, siteAccessLink])
 			};
 			contents = <span dangerouslySetInnerHTML={html}/>;
 		}

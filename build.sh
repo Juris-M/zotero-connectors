@@ -30,7 +30,7 @@ function usage {
 	cat >&2 <<DONE
 Usage: $0 [-p PLATFORMS] [-v VERSION] [-d]
 Options
- -p PLATFORMS        platform(s) (b=browserExt, s=safari, k=bookmarklet; defaults to all)
+ -p PLATFORMS        platform(s) (b=browserExt, s=safari; defaults to all)
  -v VERSION          use version VERSION
  -d                  build for debugging (enable translator tester, don't minify)
 DONE
@@ -41,7 +41,6 @@ GULP=$CWD/node_modules/gulp/bin/gulp.js
 
 BUILD_BROWSER_EXT=0
 BUILD_SAFARI=0
-BUILD_BOOKMARKLET=0
 while getopts "hp:v:d" opt; do
 	case $opt in
 		h)
@@ -53,7 +52,6 @@ while getopts "hp:v:d" opt; do
 				case ${OPTARG:i:1} in
 					b) BUILD_BROWSER_EXT=1;;
 					s) BUILD_SAFARI=1;;
-					k) BUILD_BOOKMARKLET=1;;
 					*)
 						echo "$0: Invalid platform option ${OPTARG:i:1}"
 						usage
@@ -83,10 +81,9 @@ if [[ ! -z "$TEST_CHROME" ]] || [[ ! -z "$TEST_FX" ]]; then
 elif [[ ! -z $TEST_SAFARI ]]; then
 	BUILD_SAFARI=1
 # Default to all builds if none specified
-elif [[ $BUILD_BROWSER_EXT -eq 0 ]] && [[ $BUILD_SAFARI -eq 0 ]] && [[ $BUILD_BOOKMARKLET -eq 0 ]]; then
+elif [[ $BUILD_BROWSER_EXT -eq 0 ]] && [[ $BUILD_SAFARI -eq 0 ]]; then
 	BUILD_BROWSER_EXT=1
 	BUILD_SAFARI=1
-	BUILD_BOOKMARKLET=1
 fi
 
 if [ -z $VERSION ]; then
@@ -105,10 +102,12 @@ fi
 
 SRCDIR="$CWD/src"
 DISTDIR="$CWD/dist"
+LIBDIR="$CWD/lib"
 NODE_MODULES_DIR="$CWD/node_modules"
 LOG="$CWD/build.log"
 
-EXTENSION_XPCOM_DIR="$SRCDIR/zotero/chrome/content/zotero/xpcom"
+EXTENSION_TRANSLATE_DIR="$SRCDIR/translate"
+EXTENSION_UTILITIES_DIR="$SRCDIR/utilities"
 EXTENSION_SKIN_DIR="$SRCDIR/zotero/chrome/skin/default/zotero"
 
 SAFARI_EXT="$DISTDIR/Zotero_Connector-$VERSION.safariextz"
@@ -133,48 +132,6 @@ if [[ ! -z $DEBUG ]]; then
 		"$NODE_MODULES_DIR/sinon/pkg/sinon.js")
 fi
 
-# Scripts to be included in bookmarklet
-BOOKMARKLET_INJECT_INCLUDE=("$SRCDIR/common/cachedTypes.js" \
-	"$EXTENSION_XPCOM_DIR/date.js" \
-	"$SRCDIR/common/inject/http.js" \
-	"$EXTENSION_XPCOM_DIR/openurl.js" \
-	"$EXTENSION_XPCOM_DIR/rdf/init.js" \
-	"$EXTENSION_XPCOM_DIR/rdf/uri.js" \
-	"$EXTENSION_XPCOM_DIR/rdf/term.js" \
-	"$EXTENSION_XPCOM_DIR/rdf/identity.js" \
-	"$EXTENSION_XPCOM_DIR/rdf/match.js" \
-	"$EXTENSION_XPCOM_DIR/rdf/rdfparser.js" \
-	"$EXTENSION_XPCOM_DIR/translation/translate.js" \
-	"$SRCDIR/common/translate_item.js" \
-	"$SRCDIR/common/inject/translate_inject.js" \
-	"$SRCDIR/zotero/resource/schema/connectorTypeSchemaData.js" \
-	"$EXTENSION_XPCOM_DIR/dateparser.js" \
-	"$EXTENSION_XPCOM_DIR/utilities_translate.js" \
-	"$SRCDIR/bookmarklet/messaging_inject.js" \
-	"$SRCDIR/bookmarklet/inject_base.js")
-
-BOOKMARKLET_IFRAME_INCLUDE=("$SRCDIR/common/connector.js" \
-	"$EXTENSION_XPCOM_DIR/translation/tlds.js" \
-	"$SRCDIR/bookmarklet/translator.js" \
-	"$SRCDIR/common/messaging.js" \
-	"$SRCDIR/bookmarklet/iframe_base.js")
-
-BOOKMARKLET_COMMON_INCLUDE=("$SRCDIR/bookmarklet/zotero_config.js" \
-	"$EXTENSION_XPCOM_DIR/debug.js" \
-	"$SRCDIR/common/errors_webkit.js" \
-	"$SRCDIR/common/http.js" \
-	"$EXTENSION_XPCOM_DIR/xregexp/xregexp.js" \
-	"$EXTENSION_XPCOM_DIR/xregexp/addons/build.js" \
-	"$EXTENSION_XPCOM_DIR/xregexp/addons/matchrecursive.js" \
-	"$EXTENSION_XPCOM_DIR/xregexp/addons/unicode/unicode-base.js" \
-	"$EXTENSION_XPCOM_DIR/xregexp/addons/unicode/unicode-categories.js" \
-	"$EXTENSION_XPCOM_DIR/xregexp/addons/unicode/unicode-zotero.js" \
-	"$EXTENSION_XPCOM_DIR/utilities.js" \
-	"$SRCDIR/bookmarklet/messages.js")
-
-BOOKMARKLET_AUXILIARY_JS=( \
-	"$SRCDIR/bookmarklet/loader.js" \
-	)
 
 # Remove log file
 rm -f "$LOG"
@@ -184,13 +141,13 @@ rm -rf "$BUILD_DIR/browserExt" \
 	"$BUILD_DIR/chrome" \
 	"$BUILD_DIR/firefox" \
 	"$BUILD_DIR/safari" \
+	"$BUILD_DIR/manifestv3" \
 	"$BUILD_DIR/bookmarklet"
 
 # Make directories if they don't exist
 for dir in "$DISTDIR" \
 	"$BUILD_DIR/safari" \
-	"$BUILD_DIR/browserExt" \
-	"$BUILD_DIR/bookmarklet"; do
+	"$BUILD_DIR/browserExt"; do
 	if [ ! -d "$dir" ]; then
 		mkdir "$dir"
 	fi
@@ -217,23 +174,9 @@ function copyResources {
 	# Set version
 	perl -pi -e 's/^(\s*this.version\s*=\s*)"[^"]*"/$1"'"$VERSION"'"/' "$browser_builddir/zotero.js"
 	
-	# Copy extension pieces
-	mkdir "$browser_builddir/zotero"
-	cp -r "$EXTENSION_XPCOM_DIR/utilities.js" \
-		"$EXTENSION_XPCOM_DIR/dateparser.js" \
-		"$EXTENSION_XPCOM_DIR/utilities_translate.js" \
-		"$EXTENSION_XPCOM_DIR/date.js" \
-		"$EXTENSION_XPCOM_DIR/debug.js" \
-		"$EXTENSION_XPCOM_DIR/openurl.js" \
-		"$EXTENSION_XPCOM_DIR/rdf" \
-		"$SRCDIR/zotero/resource/schema/connectorTypeSchemaData.js" \
-		"$EXTENSION_XPCOM_DIR/xregexp" \
-		"$browser_builddir/zotero"
-	mkdir "$browser_builddir/zotero/translation"
-	cp "$EXTENSION_XPCOM_DIR/translation/translate.js" \
-		"$EXTENSION_XPCOM_DIR/translation/translator.js" \
-		"$EXTENSION_XPCOM_DIR/translation/tlds.js" \
-		"$browser_builddir/zotero/translation"
+	# Copy translation pieces
+	cp -r "$EXTENSION_TRANSLATE_DIR/src" "$browser_builddir/translate"
+	cp -r "$EXTENSION_UTILITIES_DIR" "$browser_builddir/utilities"
 	
 	# Make sure an empty browser-polyfill.js exists in Safari, since it's included in iframe
 	# HTML pages
@@ -290,16 +233,17 @@ function copyResources {
 	find "$browser_builddir" -type f -name "*.jsx" -delete
 
 	# Copy SingleFile submodule code
-	mkdir -p "$browser_builddir/lib/SingleFile/extension/lib"
-	cp -r "$SRCDIR/zotero/resource/SingleFile/extension/lib/single-file" \
-		"$browser_builddir/lib/SingleFile/extension/lib/single-file"
-	cp -r "$SRCDIR/zotero/resource/SingleFile/lib" "$browser_builddir/lib/SingleFile/lib"
+	mkdir -p "$browser_builddir/lib/SingleFile/lib"
+	cp -r "$SRCDIR/zotero/resource/SingleFile/lib/single-file-bootstrap.js" \
+	  "$SRCDIR/zotero/resource/SingleFile/lib/single-file-hooks-frames.js" \
+	  "$SRCDIR/zotero/resource/SingleFile/lib/single-file.js" \
+		"$browser_builddir/lib/SingleFile"
 	# Copy SingleFile config object from client code
 	cp "$SRCDIR/zotero/chrome/content/zotero/xpcom/singlefile.js" "$browser_builddir/singlefile-config.js"
 	
 	if [ ! -z $DEBUG ]; then
-		cp "$SRCDIR/zotero/chrome/content/zotero/tools/testTranslators"/*.js \
-			"$SRCDIR/zotero/chrome/content/zotero/tools/testTranslators"/*.css \
+		cp "$EXTENSION_TRANSLATE_DIR/testTranslators"/*.js \
+			"$EXTENSION_TRANSLATE_DIR/testTranslators"/*.css \
 			"$browser_builddir/tools/testTranslators"
 	else
 		rm -rf "$browser_builddir/tools"
@@ -335,8 +279,7 @@ if [[ $BUILD_SAFARI == 1 ]]; then
 		cp $ICONS $IMAGES $PREFS_IMAGES "$BUILD_DIR/safari/images"
 		for f in $ICONS
 		do
-			$IMAGEMAGICK_CONVERT $f -background white -flatten -negate -alpha Background -alpha Copy -channel \
-					Opacity -contrast-stretch 50 "$BUILD_DIR/safari/images/toolbar/"`basename $f`
+			$IMAGEMAGICK_CONVERT $f -grayscale Rec709Luminance "$BUILD_DIR/safari/images/toolbar/"`basename $f`
 		done
 	else
 		echo
@@ -351,9 +294,10 @@ if [[ $BUILD_SAFARI == 1 ]]; then
 	copyResources 'safari'
 fi
 
-# Make separate Chrome and Firefox directories
+# Make separate Chrome, Chrome Manifest v3 and Firefox directories
 if [[ $BUILD_BROWSER_EXT == 1 ]]; then
 	rsync -a $BUILD_DIR/browserExt/ $BUILD_DIR/chrome/
+	rsync -a $BUILD_DIR/browserExt/ $BUILD_DIR/manifestv3/
 	mv $BUILD_DIR/browserExt $BUILD_DIR/firefox
 fi
 
@@ -369,6 +313,11 @@ if [[ $BUILD_BROWSER_EXT == 1 ]] || [[ $BUILD_SAFARI == 1 ]]; then
 fi
 
 if [[ $BUILD_BROWSER_EXT == 1 ]]; then
+	# Remove MV3 manifest file
+	rm "$BUILD_DIR/chrome/manifest-v3.json"
+	rm "$BUILD_DIR/manifestv3/manifest-v3.json"
+	rm "$BUILD_DIR/firefox/manifest-v3.json"
+	
 	# Chrome modifications
 	
 	# Use larger icons where available in Chrome, which actually wants 19px icons
@@ -388,10 +337,24 @@ if [[ $BUILD_BROWSER_EXT == 1 ]]; then
 	popd > /dev/null
 	
 	# Remove cruft from the version string that would make Chrome barf.
-	pushd $BUILD_DIR/chrome > /dev/null
-	cat manifest.json | jq '.version |= sub("beta.*"; "")' > manifest.json-tmp
-	mv manifest.json-tmp manifest.json
-	popd > /dev/null
+	## pushd $BUILD_DIR/chrome > /dev/null
+	## cat manifest.json | jq '.version |= sub("beta.*"; "")' > manifest.json-tmp
+	## mv manifest.json-tmp manifest.json
+	## popd > /dev/null
+
+	# Chrome Manifest V3 modifications
+	rsync -a $BUILD_DIR/chrome/images/ $BUILD_DIR/manifestv3/images/
+	
+	# Replace SingleFile code for MV3 with SingleFile-Lite
+	rm -rf "$BUILD_DIR/manifestv3/lib/SingleFile"
+	mkdir -p "$BUILD_DIR/manifestv3/lib/SingleFile"
+	cp -r "$LIBDIR/SingleFile-Lite/lib/single-file-extension-core.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/single-file-background.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/single-file.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/single-file-frames.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/chrome-browser-polyfill.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/single-file-hooks-frames.js" \
+		"$BUILD_DIR/manifestv3/lib/SingleFile"
 	
 	# Firefox modifications
 	
@@ -403,55 +366,7 @@ if [[ $BUILD_BROWSER_EXT == 1 ]]; then
 	for img in "$BUILD_DIR"/firefox/images/*48px.png; do
 		cp $img `echo $img | sed 's/@48px//'`
 	done
-	
-	# Remove 'optional_permissions' property used by Chrome from the manifest.
-	# If we start using other optional permissions in Firefox before 'management'
-	# is supported in Firefox, we can probably get jq to delete just 'management'.
-	pushd $BUILD_DIR/firefox > /dev/null
-	cat manifest.json | jq '. |= del(.optional_permissions)' > manifest.json-tmp
-	mv manifest.json-tmp manifest.json
-	popd > /dev/null
 
 fi
 
 echo "done"
-
-if [ $BUILD_BOOKMARKLET == 1 ]; then
-	echo -n "Building bookmarklet..."
-	
-	# Make bookmarklet
-	
-	# Copy/minify auxiliary JS
-	if [ ! -z $DEBUG ]; then
-		cp "${BOOKMARKLET_AUXILIARY_JS[@]}" "$BUILD_DIR/bookmarklet"
-	else	
-		for scpt in "${BOOKMARKLET_AUXILIARY_JS[@]}"
-		do
-			"$CWD/node_modules/babel-cli/bin/babel.js" "$scpt" --out-file "$BUILD_DIR/bookmarklet/`basename \"$scpt\"`" --presets minify --no-comments -q >> "$LOG" 2>&1
-		done
-	fi	
-	
-	# Copy HTML to dist directory
-	cp -R "$SRCDIR/bookmarklet/debug_mode.html" \
-		"$SRCDIR/bookmarklet/iframe.html" \
-		"$SRCDIR/bookmarklet/auth_complete.html" \
-		"$SRCDIR/bookmarklet/upload.js" \
-		"$SRCDIR/common/itemSelector" \
-		"$SRCDIR/common/progressWindow" \
-		"$BUILD_DIR/bookmarklet"
-	cp "$SRCDIR/bookmarklet/htaccess" "$BUILD_DIR/bookmarklet/.htaccess"
-	rm -rf "$BUILD_DIR/bookmarklet/images"
-	mkdir "$BUILD_DIR/bookmarklet/images"
-	cp $ICONS $IMAGES "$BUILD_DIR/bookmarklet/images"
-	
-	# Update scripts
-	if [ ! -z $DEBUG ]; then
-		"$GULP" process-bookmarklet-scripts --connector-version "$VERSION" > "$LOG" 2>&1
-	else
-		"$GULP" process-bookmarklet-scripts --connector-version "$VERSION" -p > "$LOG" 2>&1
-	fi
-	
-	echo "done"
-else
-	rmdir "$BUILD_DIR/bookmarklet"
-fi

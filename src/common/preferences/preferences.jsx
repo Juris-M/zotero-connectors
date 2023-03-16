@@ -67,15 +67,15 @@ var Zotero_Preferences = {
 		} else {
 			Zotero_Preferences.selectPane("general");
 		}
-		
-		Zotero_Preferences.General.init();
-		Zotero_Preferences.Advanced.init();
 
 		var checkboxes = document.querySelectorAll('[type="checkbox"][data-pref]');
 		for (let checkbox of checkboxes) {
-			checkbox.onchange = Zotero_Preferences.onPrefCheckboxChange;
+			checkbox.addEventListener('change', Zotero_Preferences.onPrefCheckboxChange);
 			checkbox.checked = await Zotero.Prefs.getAsync(checkbox.dataset.pref);
-		}
+		}		
+		
+		Zotero_Preferences.General.init();
+		Zotero_Preferences.Advanced.init();
 
 		if (Zotero.isBrowserExt) {
 			Zotero.Prefs.loadNamespace('proxies').then(function() {
@@ -157,7 +157,7 @@ var Zotero_Preferences = {
 Zotero_Preferences.General = {
 	init: function() {
 
-		if (Zotero.isBrowserExt) {
+		if (Zotero.isBrowserExt && !Zotero.isManifestV3) {
 			let elem = document.getElementById('intercept-and-import');
 			elem.style.display = null;
 			this.mimeTypeHandlingComponent = React.createElement(Zotero_Preferences.Components.MIMETypeHandling, null);
@@ -209,11 +209,7 @@ Zotero_Preferences.General = {
 	 * Opens the translator tester in a new window.
 	 */
 	openTranslatorTester: function() {
-		if(Zotero.isSafari) {
-			window.open(`${safari.extension.baseURI}safari/`+"tools/testTranslators/testTranslators.html", "translatorTester");
-		} else if(Zotero.isBrowserExt) {
-			window.open(browser.extension.getURL("tools/testTranslators/testTranslators.html"), "translatorTester");
-		}
+		window.open(Zotero.getExtensionURL("tools/testTranslators/testTranslators.html"), "translatorTester");
 	}
 };
 
@@ -233,13 +229,6 @@ Zotero_Preferences.Advanced = {
 			function() { Zotero.Debug.setStore(this.checked); };
 		document.getElementById("advanced-checkbox-enable-at-startup").onchange =
 			function() { Zotero.Prefs.set('debug.store', this.checked); };
-		document.getElementById("advanced-checkbox-show-in-console").onchange = function() {
-			Zotero.Prefs.set('debug.log', this.checked);
-			Zotero.Debug.bgInit();
-			// Zotero.Debug.init() sets store to false
-			Zotero.Debug.setStore(document.getElementById("advanced-checkbox-enable-logging").checked);
-			Zotero.Prefs.set('debug.store', document.getElementById("advanced-checkbox-enable-at-startup").checked);
-		};
 		document.getElementById("advanced-checkbox-report-translator-failure").onchange =
 			function() { Zotero.Prefs.set('reportTranslationFailure', this.checked); };
 		document.getElementById("advanced-button-view-output").onclick = Zotero_Preferences.Advanced.viewDebugOutput;
@@ -249,19 +238,26 @@ Zotero_Preferences.Advanced = {
 		document.getElementById("advanced-button-reset-translators").onclick = function() { Zotero.Repo.update(true) };
 		document.getElementById("advanced-button-report-errors").onclick = Zotero_Preferences.Advanced.submitErrors;
 
+		const googleDocsEnabledCheckbox = document.getElementById("advanced-checkbox-google-docs-enabled");
+		function onGoogleDocsEnabledChange() {
+			let inputs = document.querySelectorAll('#advanced-google-docs-subprefs input');
+			inputs.forEach(input => input.disabled = !googleDocsEnabledCheckbox.checked);
+		}
+		googleDocsEnabledCheckbox.addEventListener('change', onGoogleDocsEnabledChange);
+		setTimeout(() => onGoogleDocsEnabledChange.call(googleDocsEnabledCheckbox), 20);
+
 
 		var openTranslatorTesterButton = document.getElementById("advanced-button-open-translator-tester");
 		if (openTranslatorTesterButton) openTranslatorTesterButton.onclick = Zotero_Preferences.General.openTranslatorTester;
 		var testRunnerButton = document.getElementById("advanced-button-open-test-runner");
 		if (testRunnerButton) testRunnerButton.onclick = function() {
-			if (Zotero.isSafari) {
-				Zotero.Connector_Browser.openTab(`${safari.extension.baseURI}safari/` + "test/test.html");
-			} else {
-				Zotero.Connector_Browser.openTab(browser.extension.getURL(`test/test.html`));
-			}
+			Zotero.Connector_Browser.openTab(Zotero.getExtensionURL(`test/test.html`));
 		};
 		document.getElementById("advanced-button-config-editor").onclick = function() {
-			if (confirm("Changing these advanced settings can be harmful to the stability, security, and performance of the browser and the Zotero Connector. \nYou should only proceed if you are sure of what you are doing.")) {
+			let msg = "Changing these advanced settings can be harmful to the stability, security, "
+				+ "and performance of the browser and the Zotero Connector. You should only "
+				+ "proceed if you are sure of what you are doing.";
+			if (confirm(msg)) {
 				Zotero.Connector_Browser.openConfigEditor();
 			}
 		};
@@ -272,9 +268,6 @@ Zotero_Preferences.Advanced = {
 		});
 		Zotero.Prefs.getAsync("debug.store").then(function(status) {
 			document.getElementById('advanced-checkbox-enable-at-startup').checked = !!status;
-		});
-		Zotero.Prefs.getAsync("debug.log").then(function(status) {
-			document.getElementById('advanced-checkbox-show-in-console').checked = !!status;
 		});
 		Zotero.Prefs.getAsync("reportTranslationFailure").then(function(status) {
 			document.getElementById('advanced-checkbox-report-translator-failure').checked = !!status;
@@ -309,8 +302,8 @@ Zotero_Preferences.Advanced = {
 		var submitOutputButton = document.getElementById('advanced-button-submit-output');
 		toggleDisabled(submitOutputButton, true);
 
-		// We have to request within a user gesture in chrome
-		if (Zotero.isChrome) {
+		// We have to request permissions within a user gesture (even though we use this in Zotero.getSystemInfo())
+		if (Zotero.browserExt) {
 			try {
 				await browser.permissions.request({permissions: ['management']});
 			} catch (e) {
@@ -323,7 +316,7 @@ Zotero_Preferences.Advanced = {
 			let result = await Zotero.ModalPrompt.confirm({
 				message: Zotero.getString('reports_debug_output_submitted', 'D' + reportID).replace(/\n/g, '<br/>'),
 				button1Text: "OK",
-				button2Text: Zotero.getString("general_copyToClipboard"),
+				button2Text: !Zotero.isSafari ? Zotero.getString("general_copyToClipboard") : "",
 			});
 			if (result.button == 2) {
 				navigator.clipboard.writeText('D' + reportID);
@@ -344,8 +337,8 @@ Zotero_Preferences.Advanced = {
 		var reportErrorsButton = document.getElementById('advanced-button-report-errors');
 		toggleDisabled(reportErrorsButton, true);
 		
-		// We have to request within a user gesture in chrome
-		if (Zotero.isChrome) {
+		// We have to request permissions within a user gesture (even though we use this in Zotero.getSystemInfo())
+		if (Zotero.browserExt) {
 			try {
 				await browser.permissions.request({permissions: ['management']});
 			} catch (e) {
@@ -358,7 +351,7 @@ Zotero_Preferences.Advanced = {
 			let result = await Zotero.ModalPrompt.confirm({
 				message: Zotero.getString('reports_report_submitted', reportID).replace(/\n/g, '<br/>'),
 				button1Text: "OK",
-				button2Text: Zotero.getString("general_copyToClipboard"),
+				button2Text: !Zotero.isSafari ? Zotero.getString("general_copyToClipboard") : "",
 			});
 			if (result.button == 2) {
 				navigator.clipboard.writeText(reportID);
@@ -423,7 +416,7 @@ Zotero_Preferences.Components.ProxySettings = class ProxySettings extends React.
 				<div className="group">
 					<div className="group-title">Proxy Settings</div>
 					<div className="group-content">
-						<p>Zotero will transparently redirect requests through saved proxies. See the <a href="https://www.zotero.org/support/proxies">proxy documentation</a> for more information.</p>
+						<p>Zotero will transparently redirect requests through saved proxies. See the <a href="https://www.zotero.org/support/connector_preferences#proxies">proxy documentation</a> for more information.</p>
 						<p></p>
 						<Zotero_Preferences.Components.ProxyPreferences onTransparentChange={this.handleTransparentChange}/>
 					</div>
@@ -445,7 +438,7 @@ Zotero_Preferences.Components.ProxyPreferences = class ProxyPreferences extends 
 		super(props);
 		let state = {};
 		let settings = ['transparent', 'autoRecognize', 'showRedirectNotification',
-			 'disableByDomain', 'disableByDomainString'];
+			 'disableByDomain', 'disableByDomainString', 'loopPreventionTimestamp'];
 		for (let setting of settings) {
 			state[setting] = Zotero.Prefs.get('proxies.'+setting);
 		}
@@ -463,6 +456,11 @@ Zotero_Preferences.Components.ProxyPreferences = class ProxyPreferences extends 
 		this.updateState(event.target.name, event.target.value);
 	}
 	
+	reenableProxyRedirection = () => {
+		Zotero.Proxies.toggleRedirectLoopPrevention(false);
+		this.setState({ loopPreventionTimestamp: 0 });
+	}
+	
 	updateState(name, value) {
 		let newState = {};
 		newState[name] = value;
@@ -478,19 +476,31 @@ Zotero_Preferences.Components.ProxyPreferences = class ProxyPreferences extends 
 	render() {
 		let autoRecognise = '';
 		if (Zotero.isBrowserExt) {
-			autoRecognise = <span><label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="autoRecognize" defaultChecked={this.state.autoRecognize}/>&nbsp;Automatically detect new proxies</label><br/></span>;
+			autoRecognise = <label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="autoRecognize" defaultChecked={this.state.autoRecognize}/>&nbsp;Automatically detect new proxies</label>;
+		}
+		let redirectLoopPrevention = ''
+		if (this.state.loopPreventionTimestamp > Date.now() && this.state.transparent) {
+			redirectLoopPrevention = (
+				<div className="group">
+					<b>Zotero detected a proxy redirect loop and has temporarily suspended automatic proxy redirection.</b> <input type="button" onClick={this.reenableProxyRedirection} value="Reenable proxy redirection"/>
+				</div>
+			)
 		}
 		return (
 			<div>
-				<label><input type="checkbox" name="transparent" onChange={this.handleCheckboxChange} defaultChecked={this.state.transparent}/>&nbsp;Enable proxy redirection</label><br/>
-				<div style={{marginLeft: "1em"}}>
-					<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="showRedirectNotification" defaultChecked={this.state.showRedirectNotification}/>&nbsp;Show a notification when redirecting through a proxy</label><br/>
-					{autoRecognise}
-					<br/>
-					<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="disableByDomain" defaultChecked={this.state.disableByDomain}/>&nbsp;Disable proxy redirection when my domain name contains<span>*</span></label><br/>
-					<input style={{marginTop: "0.5em", marginLeft: "1.5em"}} type="text" onChange={this.handleTextInputChange} disabled={!this.state.transparent || !this.state.disableByDomain} name="disableByDomainString" defaultValue={this.state.disableByDomainString}/>
+				{redirectLoopPrevention}
+				<div>
+					<label><input type="checkbox" name="transparent" onChange={this.handleCheckboxChange} defaultChecked={this.state.transparent}/>&nbsp;Enable proxy redirection</label>
+					<div style={{marginLeft: "1em"}}>
+						<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="showRedirectNotification" defaultChecked={this.state.showRedirectNotification}/>&nbsp;Show a notification when redirecting through a proxy</label>
+						{autoRecognise}
+						<p>
+							<label><input type="checkbox" disabled={!this.state.transparent} onChange={this.handleCheckboxChange} name="disableByDomain" defaultChecked={this.state.disableByDomain}/>&nbsp;Disable proxy redirection when my domain name contains<span>*</span></label>
+							<input style={{marginTop: "0.5em", marginLeft: "1.5em"}} type="text" onChange={this.handleTextInputChange} disabled={!this.state.transparent || !this.state.disableByDomain} name="disableByDomainString" defaultValue={this.state.disableByDomainString}/>
+						</p>
+					</div>
+					<p><span>*</span>Available when Zotero is running</p>
 				</div>
-				<p><span>*</span>Available when Zotero is running</p>
 			</div>
 		);
 	}
@@ -500,8 +510,12 @@ Zotero_Preferences.Components.ProxyPreferences = class ProxyPreferences extends 
 Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponent {
 	constructor(props) {
 		super(props);
+		let proxies = Zotero.Prefs.get('proxies.proxies').map((proxy) => {
+			proxy.toProperScheme = proxy.toProperScheme || proxy.scheme
+			return proxy;
+		});
 		this.state = {
-			proxies: Zotero.Prefs.get('proxies.proxies'),
+			proxies,
 			currentProxy: undefined,
 			currentHostIdx: -1
 		};
@@ -520,9 +534,9 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 	}
 	
 	componentDidUpdate(prevProps, prevState) {
-		if (this.focusSchemeInput) {
-			this.focusSchemeInput = false;
-			this.refs.schemeInput.focus();
+		if (this.focusToProxyInput) {
+			this.focusToProxyInput = false;
+			this.refs.toProxyInput.focus();
 		}
 		else if (this.focusHostInput) {
 			this.focusHostInput = false;
@@ -559,14 +573,15 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 			if (value == '+') {
 				let newProxy = {
 					id: Date.now(),
-					scheme: '%h.example.com/%p',
+					toProxyScheme: 'https://www.example.com/login?qurl=%u',
+					toProperScheme: '%h.example.com/%p',
 					autoAssociate: true,
 					hosts: []
 				};
 				newState.proxies = prevState.proxies.concat([newProxy]);
 				newState.currentProxy = newProxy;
 				newState.currentHostIdx = -1;
-				this.focusSchemeInput = true;
+				this.focusToProxyInput = true;
 				this.saveProxy(newProxy);
 			}
 			// Delete proxy
@@ -578,7 +593,7 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 					...oldProxies.slice(pos + 1)
 				];
 				Zotero.Proxies.remove(prevState.currentProxy);
-				newState.currentProxy = oldProxies[pos] || oldProxies[pos - 1];
+				newState.currentProxy = newState.proxies [pos] || newState.proxies[pos - 1];
 			}
 			return newState;
 		});
@@ -586,6 +601,7 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 	
 	handleSchemeChange(event) {
 		var value = event.target.value;
+		var name = event.target.name;
 		this.setState((prevState) => {
 			var newState = {};
 			var oldProxy = prevState.currentProxy;
@@ -593,7 +609,7 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 				{},
 				oldProxy,
 				{
-					scheme: value,
+					[name]: value,
 					hosts: [...oldProxy.hosts]
 				}
 			);
@@ -633,7 +649,10 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 			var newProxy = Object.assign({}, oldProxy);
 			// Add host to end
 			if (value == '+') {
-				newProxy.hosts = oldProxy.hosts.concat(['']);
+				let lastHostEmpty = oldProxy.hosts.length && oldProxy.hosts[oldProxy.hosts.length-1].trim().length == 0;
+				if (!lastHostEmpty) {
+					newProxy.hosts = oldProxy.hosts.concat(['']);
+				}
 				newState.currentHostIdx = newProxy.hosts.length - 1;
 				this.focusHostInput = true;
 			}
@@ -677,29 +696,29 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 		}
 		
 		let currentProxy = this.state.currentProxy;
-		let multiHost = currentProxy.scheme.indexOf('%h') != -1;
+		var multiHost = currentProxy && currentProxy.toProperScheme.includes('%h') || currentProxy.toProperScheme.includes('%u');
 		
 		// If a host exists in the last position and is empty, don't allow adding more
-		let disableAddHost = currentProxy.hosts.length && currentProxy.hosts[currentProxy.hosts.length-1].trim().length == 0;
 		let disableRemoveHost = this.state.currentHostIdx == -1;
 		
 		return (
 			<div className="group" style={{marginTop: "10px"}}>
 				<p style={{display: "flex", alignItems: "center", flexWrap: "wrap"}}>
-					<label style={{visibility: multiHost ? null : 'hidden'}}><input type="checkbox" name="autoAssociate" onChange={this.handleCheckboxChange} checked={currentProxy.autoAssociate}/>&nbsp;Automatically associate new hosts</label><br/>
-					<label><input type="checkbox" name="dotsToHyphens" onChange={this.handleCheckboxChange} checked={currentProxy.dotsToHyphens}/>&nbsp;Automatically convert between dots and hyphens in proxied hostnames</label><br/>
+					<label style={{visibility: multiHost ? null : 'hidden'}}><input type="checkbox" name="autoAssociate" onChange={this.handleCheckboxChange} checked={currentProxy.autoAssociate}/>&nbsp;Automatically associate new hosts</label>
 				</p>
 				<p style={{display: "flex", alignItems: "center"}}>
-					<label style={{alignSelf: "center", marginRight: "5px"}}>Scheme: </label>
-					<input style={{flexGrow: "1"}} type="text" name="scheme" onChange={this.handleSchemeChange} value={currentProxy.scheme} ref={"schemeInput"}/>
+					<label style={{alignSelf: "center", marginRight: "5px"}}>Login URL Scheme: </label>
+					<input style={{flexGrow: "1"}} type="text" name="toProxyScheme" onChange={this.handleSchemeChange} value={currentProxy.toProxyScheme || ""} ref={"toProxyInput"}/>
+				</p>	
+				<p style={{display: "flex", alignItems: "center"}}>
+					<label style={{alignSelf: "center", marginRight: "5px"}}>Proxied URL Scheme: </label>
+					<input style={{flexGrow: "1"}} type="text" name="toProperScheme" onChange={this.handleSchemeChange} value={currentProxy.toProperScheme} ref={"toProperInput"}/>
 				</p>
 				<p>
-					You may use the following variables in your proxy scheme:<br/>
+					You may use the following variables in your proxy schemes:<br/>
 					&#37;h - The hostname of the proxied site (e.g., www.example.com)<br/>
 					&#37;p - The path of the proxied page excluding the leading slash (e.g., about/index.html)<br/>
-					&#37;d - The directory path (e.g., about/)<br/>
-					&#37;f - The filename (e.g., index.html)<br/>
-					&#37;a - Any string
+					&#37;u - Full encoded proxied site url (e.g. https://www.example.com/about/index.html)
 				</p>
 				
 				<div style={{display: "flex", flexDirection: "column", marginTop: "10px"}}>
@@ -711,7 +730,7 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 							<option key={i} value={i}>{host}</option>)}
 					</select>
 					<p>
-						<input style={{minWidth: "80px", marginRight: "10px"}} type="button" onClick={this.handleHostButtonClick} disabled={disableAddHost} value="+"/>
+						<input style={{minWidth: "80px", marginRight: "10px"}} type="button" onClick={this.handleHostButtonClick} value="+"/>
 						<input style={{minWidth: "80px", marginRight: "10px"}} type="button" onClick={this.handleHostButtonClick} disabled={disableRemoveHost} value="-"/>
 					</p>
 
@@ -735,7 +754,7 @@ Zotero_Preferences.Components.Proxies = class Proxies extends React.PureComponen
 						onChange={this.handleProxySelectChange}
 						disabled={!this.props.transparent}>
 					{this.state.proxies.length && this.state.proxies.map((proxy, i) => {
-						return <option key={i} value={proxy.id}>{proxy.scheme}</option>;
+						return <option key={i} value={proxy.id}>{proxy.toProxyScheme || proxy.toProperScheme}</option>;
 					})}
 				</select>
 				<p style={{display: this.props.transparent ? null : 'none'}}>
@@ -825,7 +844,7 @@ Zotero_Preferences.Components.MIMETypeHandling = class MIMETypeHandling extends 
 			<div>
 				<p>Available when Zotero is running</p>
 				<p>
-					<label><input type="checkbox" onChange={this.handleCheckboxChange} name="enabled" defaultChecked={this.state.enabled}/>&nbsp;Import BibTeX/RIS/Refer files into Zotero</label><br/>
+					<label><input type="checkbox" onChange={this.handleCheckboxChange} name="enabled" defaultChecked={this.state.enabled}/>&nbsp;Import BibTeX/RIS/Refer files into Zotero</label>
 				</p>
 				<div style={{display: this.state.enabled ? 'flex' : 'none', flexDirection: "column", marginTop: "10px"}}>
 					<label>Enabled Hostnames</label>
@@ -888,7 +907,7 @@ Zotero_Preferences.Components.ShortcutInput = class extends React.Component {
 	}
 
 	render() {
-		let val = Zotero.Utilities.kbEventToShortcutString(this.state.modifiers);
+		let val = Zotero.Utilities.Connector.kbEventToShortcutString(this.state.modifiers);
 
 		let classes = "shortcut-input";
 		if (this.state.invalid) {

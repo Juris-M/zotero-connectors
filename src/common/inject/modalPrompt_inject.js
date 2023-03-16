@@ -43,12 +43,8 @@ if (isTopWindow) {
 	var iframe;
 	var initialized = false;
 	var frameSrc;
-	if (Zotero.isSafari) {
-		frameSrc = `${safari.extension.baseURI}safari/` + 'modalPrompt/modalPrompt.html';
-	}
-	else {
-		frameSrc = browser.extension.getURL('modalPrompt/modalPrompt.html');
-	}
+	var previousFocus;
+	frameSrc = Zotero.getExtensionURL('modalPrompt/modalPrompt.html');
 
 	async function init() {
 		var deferred = Zotero.Promise.defer();
@@ -57,6 +53,9 @@ if (isTopWindow) {
 			deferred.resolve();
 			// Prevent the flash of white screen
 			iframe.style.display = "block"
+		});
+		Zotero.Messaging.addMessageListener('modalPrompt.close', function () {
+			previousFocus && previousFocus.ownerDocument.defaultView.focus() && previousFocus.focus();
 		});
 
 		iframe = document.createElement('iframe');
@@ -75,8 +74,28 @@ if (isTopWindow) {
 		};
 		for (let i in style) iframe.style[i] = style[i];
 		document.body.appendChild(iframe);
+		setTimeout(() => deferred.reject(new Error('Timed out while injecting modal prompt')), 800);
 		return deferred.promise;
 	}
+
+	/**
+	 * Return the active element of a page, regardless of shadow root or iframe window.
+	 * @returns {HTMLElement}
+	 */
+	function getActiveElement(element = document.activeElement) {
+		const shadowRoot = element.shadowRoot
+		const contentDocument = element.contentDocument
+
+		if (shadowRoot && shadowRoot.activeElement) {
+			return getActiveElement(shadowRoot.activeElement)
+		}
+
+		if (contentDocument && contentDocument.activeElement) {
+			return getActiveElement(contentDocument.activeElement)
+		}
+
+		return element
+	}	
 
 	/**
 	 *
@@ -92,6 +111,7 @@ if (isTopWindow) {
 				await init();
 			}
 			iframe.style.display = 'block';
+			previousFocus = getActiveElement();
 			let result = await Zotero.Messaging.sendMessage('modalPrompt.show', props, null, null);
 			iframe.style.display = 'none';
 			return result

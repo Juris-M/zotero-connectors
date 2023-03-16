@@ -27,7 +27,7 @@ const ZOTERO_CONFIG = {
 	CLIENT_NAME: 'Juris-M',
 	DOMAIN_NAME: 'zotero.org',
 	DOMAIN_NAME_JURISM: 'juris-m.github.io',
-	REPOSITORY_URL: 'https://our.law.nagoya-u.ac.jp/updater/',
+	REPOSITORY_URL: 'https://jurism.xyz/updater/',
 	REPOSITORY_CHECK_INTERVAL: 86400, // 24 hours
 	REPOSITORY_RETRY_INTERVAL: 3600, // 1 hour
 	REPOSITORY_CHANNEL: 'trunk',
@@ -35,8 +35,7 @@ const ZOTERO_CONFIG = {
 	WWW_BASE_URL: 'https://www.zotero.org/',
 	CLIENT_DOWNLOAD_URL: 'https://juris-m.github.io/downloads',
 	API_URL: 'https://api.zotero.org/',
-	CONNECTOR_SERVER_URL: "http://127.0.0.1:24119/",
-	GOOGLE_DOCS_API_URL: "https://script.googleapis.com/v1/scripts/1yB-M2ynZPu5fDKJW96sCvNTenn9VRRgJi1e-b_Kq6TJjMs_F2rdxXK30:run",
+	GOOGLE_DOCS_API_URL: "https://script.googleapis.com/v1/scripts/AKfycbw3JAct47AghnQ8HQbu3VVzxW-Sniq3TeMERP9V5kpC2RA4mJswnNm5s7vSz50pkVQV:run",
 	OAUTH: {
 		ZOTERO: {
 			REQUEST_URL: 'https://www.zotero.org/oauth/request',

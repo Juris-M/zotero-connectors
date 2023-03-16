@@ -47,7 +47,7 @@ Zotero.Translate.ItemSaver = function(options) {
 	// Add listener for callbacks, but only for Safari or the bookmarklet. In Chrome, we
 	// (have to) save attachments from the inject page.
 	if(Zotero.Messaging && !Zotero.Translate.ItemSaver._attachmentCallbackListenerAdded
-			&& (Zotero.isBookmarklet || Zotero.isSafari)) {
+			&& Zotero.isSafari) {
 		Zotero.Messaging.addMessageListener("attachmentCallback", function(data) {
 			var id = data[0],
 				status = data[1];
@@ -161,9 +161,8 @@ Zotero.Translate.ItemSaver.prototype = {
 	},
 
 	_executeSingleFile: async function(payload) {
-        Zotero.debug(`XXXZ PAYLOAD=${JSON.stringify(payload)}`);
 		try {
-			payload.snapshotContent = await Zotero.SingleFile.retrievePageData(payload);
+			payload.snapshotContent = await Zotero.SingleFile.retrievePageData();
 		}
 		catch (e) {
 			// We swallow this error and fall back to saving the
@@ -247,8 +246,14 @@ Zotero.Translate.ItemSaver.prototype = {
 		return false;
 	},
 
-	_processItems: function(items) {
-		var saveOptions = !Zotero.isBookmarklet && Zotero.Inject.sessionDetails.saveOptions;
+	_processItems: async function(items) {
+		let saveOptions;
+		if (Zotero.isTranslateSandbox) {
+			saveOptions = await Zotero.TranslateSandbox.sendMessage('Inject.getSessionDetails');
+		}
+		else {
+			saveOptions = Zotero.Inject.sessionDetails.saveOptions;
+		}
 		if (saveOptions && saveOptions.note && items.length == 1) {
 			if (items[0].notes) {
 				items[0].notes.push({note: saveOptions.note})
@@ -290,13 +295,6 @@ Zotero.Translate.ItemSaver.prototype = {
 				if (e.status == 404) {
 					Zotero.Messaging.sendMessage("progressWindow.done", [true]);
 					return this._pollForProgressLegacy(items, attachmentCallback);
-				} else if (Zotero.isBookmarklet && e.status == 400) {
-					Zotero.Messaging.sendMessage("progressWindow.done", [true]);
-					for (let item of items) {
-						for (let attachment of item.attachments) {
-							attachmentCallback(Object.assign({}, attachment, {parentItem: item.id}), 100);
-						}
-					}
 				}
 				
 				for (let attachment of attachments) {
@@ -395,7 +393,7 @@ Zotero.Translate.ItemSaver.prototype = {
 				item.url = this._proxy.toProper(item.url);
 			}
 			itemIndices[i] = newItems.length;
-			newItems = newItems.concat(Zotero.Utilities.itemToAPIJSON(item));
+			newItems = newItems.concat(Zotero.Utilities.Item.itemToAPIJSON(item));
 			if (typedArraysSupported) {
 				for (let attachment of item.attachments) {
 					attachment.id = Zotero.Utilities.randomString();
@@ -475,9 +473,8 @@ Zotero.Translate.ItemSaver.prototype = {
 				attachmentCallback && attachmentCallback(attachment, 0);
 				deferredHeadersProcessed.resolve();
 				deferredAttachmentData.resolve();
-			} else if (Zotero.isBookmarklet && window.isSecureContext && attachment.url.indexOf('https') != 0) {
-				deferredAttachmentData.reject(new Error('Cannot load a HTTP attachment in a HTTPS page'));
-			} else {
+			}
+			else {
 				let method = (attachment.snapshot === false ? "HEAD" : "GET");
 				let options = { responseType: (isSnapshot ? "document" : "arraybuffer"), timeout: 60000 };
 				Zotero.HTTP.request(method, attachment.url, options).then((xhr) => {

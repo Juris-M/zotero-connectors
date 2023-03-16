@@ -1,7 +1,7 @@
 /*
 	***** BEGIN LICENSE BLOCK *****
 	
-	Copyright © 2016 Center for History and New Media
+	Copyright © 2021 Center for History and New Media
 					George Mason University, Fairfax, Virginia, USA
 					http://zotero.org
 	
@@ -23,27 +23,20 @@
 	***** END LICENSE BLOCK *****
 */
 
-/* We do not want to bundle files in a browser extension,
- * however using `require()` for node modules which we inevitably
- * need would be very nice.
- * 
- * We use browserify to bundle node_modules into this script and provide a
- * custom `require()` function, which returns a reference to modules. 
- * Obviously, this does not provide script-wise encapsulation and closures
- * should be used to prevent from trashing the global scope.
- */
+// This is the Chrome MV3 background worker entrypoint script
 
-(function() {
+// No way to inspect service-worker startup issues
+// See https://groups.google.com/a/chromium.org/g/chromium-extensions/c/lLb3EJzjw0o
+try {
+	var scriptsToImport = [
+		/*BACKGROUND SCRIPTS*/,
+		"keep-mv3-alive.js",
+		"background.js"
+	];
 
-window.require = function(module) {
-	if (__nodeModules[module]) {
-		return __nodeModules[module];
+	for (let script of scriptsToImport) {
+		self.importScripts('./'+script);
 	}
-	throw new Error('The required module does not exist');
+} catch (e) {
+	console.error(e);
 }
-
-var __nodeModules = {
-	url: require('url')
-};
-
-})();

@@ -43,7 +43,7 @@ Zotero.HTTP.isSameOrigin = function(url) {
 	if(!m) {
 		return true;
 	} else {
-		var location = Zotero.isBookmarklet ? window.parent.location : window.location;
+		var location = window.location;
 		return m[1].toLowerCase() === location.protocol.toLowerCase() &&
 			m[2].toLowerCase() === location.host.toLowerCase();
 	}
@@ -55,7 +55,7 @@ Zotero.HTTP.isSameOrigin = function(url) {
 Zotero.HTTP.isLessSecure = function(url) {
 	if (url.substr(0,8).toLowerCase() == 'https://') return false;
 	
-	var location = Zotero.isBookmarklet ? window.parent.location : window.location;
+	var location = window.location;
 	return location.protocol.toLowerCase() == 'https:';
 }
  
@@ -78,7 +78,7 @@ Zotero.HTTP.processDocuments = async function (urls, processor, options = {}) {
 	
 	if (typeof urls == "string") urls = [urls];
 	var funcs = urls.map(url => () => {
-		return Zotero.HTTP.request(
+		return Zotero.COHTTP.request(
 			"GET",
 			url,
 			{
@@ -86,7 +86,14 @@ Zotero.HTTP.processDocuments = async function (urls, processor, options = {}) {
 			}
 		)
 		.then((xhr) => {
-			var doc = Zotero.HTTP.wrapDocument(xhr.response, url);
+			Zotero.debug("Parsing cross-origin response for " + url);
+			let parser = new DOMParser();
+			let contentType = xhr.getResponseHeader("Content-Type");
+			if (contentType != 'application/xml' && contentType != 'text/xml') {
+				contentType = 'text/html';
+			}
+			let doc = parser.parseFromString(xhr.responseText, contentType);
+			doc = Zotero.HTTP.wrapDocument(doc, url);
 			return processor(doc, url);
 		});
 	});
@@ -118,9 +125,7 @@ Zotero.HTTP.processDocuments = async function (urls, processor, options = {}) {
 Zotero.Browser = {
 	createHiddenBrowser: function() {
 		var hiddenBrowser = document.createElement("iframe");
-		if(!Zotero.isBookmarklet) {
-			hiddenBrowser.style.display = "none";
-		}
+		hiddenBrowser.style.display = "none";
 		if(document.domain == document.location.hostname) {
 			// Since sandboxed iframes cannot set document.domain, if
 			// document.domain is set on this page, then SOP will

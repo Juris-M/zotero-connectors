@@ -28,10 +28,7 @@
  * See messages.js for an overview of the message handling process.
  */
 Zotero.Messaging = new function() {
-	var _messageListeners = {
-			"structuredCloneTest":function() {}
-		},
-		_nextTabIndex = 1;
+	var _messageListeners = {};
 	
 	/**
 	 * Add a message listener
@@ -48,6 +45,7 @@ Zotero.Messaging = new function() {
 	 * @param {Number} frameId not available in safari
 	 */
 	this.receiveMessage = async function(messageName, args, tab, frameId) {
+		await Zotero.initDeferred.promise;
 		//Zotero.debug("Messaging: Received message: "+messageName);
 		if (!Array.isArray(args)) {
 			args = [args];
@@ -75,7 +73,7 @@ Zotero.Messaging = new function() {
 			}
 		}
 
-		if (messageConfig.background && messageConfig.background.postReceive) {
+		if (messageConfig && messageConfig.background && messageConfig.background.postReceive) {
 			args = await messageConfig.background.postReceive(args, tab, frameId);
 		} else {
 			args.push(tab);
@@ -100,11 +98,8 @@ Zotero.Messaging = new function() {
 	 */
 	this.sendMessage = async function(messageName, args, tab, frameId=0) {
 		var response;
-		if(Zotero.isBookmarklet) {
-			window.parent.postMessage([messageName, args], "*");
-		}
 		// Use the promise or response callback in BrowserExt for advanced functionality
-		else if(Zotero.isBrowserExt) {
+		if(Zotero.isBrowserExt) {
 			// Get current tab if not provided
 			if (!tab) {
 				tab = (await browser.tabs.query({active: true, lastFocusedWindow: true}))[0]
@@ -130,35 +125,7 @@ Zotero.Messaging = new function() {
 	 * Adds messaging listener
 	 */
 	this.init = function() {
-		if(Zotero.isBookmarklet) {
-			async function listener(event) {
-				var data = event.data, source = event.source;
-				
-				// Ensure this message was sent by Zotero
-				if(event.source !== window.parent && event.source !== window) return;
-			
-				try {
-					let response = await Zotero.Messaging.receiveMessage(data[1], data[2]);
-					var message = [data[0], data[1], response];
-					source.postMessage(message, "*");
-				} catch (err) {
-					// Zotero.logError(err);
-					err = JSON.stringify(Object.assign({
-						name: err.name,
-						message: err.message,
-						stack: err.stack
-					}, err));
-					var message = [data[0], data[1], ['error', err]];
-					source.postMessage(message, "*");
-				}
-			};
-			
-			if (window.addEventListener) {
-				window.addEventListener("message", listener, false);
-			} else {
-				window.attachEvent("onmessage", function() { listener(event) });
-			}
-		} else if(Zotero.isBrowserExt) {
+		if (Zotero.isBrowserExt) {
 			browser.runtime.onMessage.addListener(function(request, sender) {
 				// All Zotero messages are arrays so we ignore everything else
 				// SingleFile will pass an object in the message so this ignores those.
@@ -177,9 +144,9 @@ Zotero.Messaging = new function() {
 					return ['error', err];
 				});
 			});
-		} else if(Zotero.isSafari) {
+		} else if (Zotero.isSafari) {
 			// Safari handled in safari/messaging_global.js
-			Zotero.Messaging.initialized = true;
 		}
+		Zotero.Messaging.initialized = true;
 	}
 }

@@ -104,9 +104,24 @@ var MESSAGES = {
 					return [data[0], data[1]];
 				}
 			}
+		},
+		getCodeForTranslator: {
+			inject: {
+				preSend: async function(args) {
+					const translator = args[0];
+					return [{ translatorID: translator.translatorID }];
+				}
+			},
+			background: {
+				postReceive: async function(args) {
+					let translatorInfo = args[0]
+					return [await Zotero.Translators.getWithoutCode(translatorInfo.translatorID)];
+				}
+			}
 		}
 	},
 	Debug: {
+		get: true,
 		bgInit: false,
 		clear: false,
 		log: {
@@ -123,6 +138,7 @@ var MESSAGES = {
 		callMethodWithCookies: true,
 		getClientVersion: true,
 		reportActiveURL: false,
+		getPref: true
 	},
 	Connector_Browser: {
 		onSelect: true,
@@ -141,12 +157,10 @@ var MESSAGES = {
 		storing: true,
 		get: true,
 		count: true,
-		submitReport: true
 	},
 	Errors: {
 		log: false,
 		getErrors: true,
-		sendErrorReport: true
 	},
 	Messaging: {
 		sendMessage: {
@@ -192,27 +206,24 @@ var MESSAGES = {
 		onAuthComplete: false,
 		run: {
 			background: {minArgs: 4}
-		}
-	},
-	GoogleDocsPluginManager: {
-		injectUI: true
+		},
+		getDocument: true,
+		batchUpdateDocument: true
 	},
 	Prefs: {
 		set: false,
 		getAll: true,
+		getDefault: true,
 		getAsync: true,
 		clear: false
 	},
 	Proxies: {
 		loadPrefs: false,
 		save: false,
-		remove: false
+		remove: false,
+		toggleRedirectLoopPrevention: false
 	},
 	Repo: {
-		getTranslatorCode: {
-			response: true,
-			background: {minArgs: 2}
-		},
 		update: false
 	},
 	WebRequestIntercept: {
@@ -227,9 +238,11 @@ MESSAGES.COHTTP = {
 			preSend: async function(xhr) {
 				let result = {
 					response: xhr.response,
+					responseType: xhr.responseType,
 					status: xhr.status,
 					statusText: xhr.statusText,
-					responseHeaders: xhr.getAllResponseHeaders()
+					responseHeaders: xhr.getAllResponseHeaders(),
+					responseURL: xhr.responseURL
 				};
 				if (result.response instanceof ArrayBuffer) {
 					result.response = packArrayBuffer(xhr.response);
@@ -244,7 +257,7 @@ MESSAGES.COHTTP = {
 					let match = xhr.responseHeaders.match(new RegExp(`^${name}: (.*)$`, 'mi'));
 					return match ? match[1] : null;
 				};
-				if (xhr.response.startsWith('blob:')) {
+				if (Array.isArray(xhr.response) || (xhr.response.startsWith && xhr.response.startsWith('blob:'))) {
 					xhr.response = await unpackArrayBuffer(xhr.response);
 				} else {
 					xhr.responseText = xhr.response;
@@ -255,19 +268,51 @@ MESSAGES.COHTTP = {
 	}
 };
 
+if (Zotero.isSafari) {
+	MESSAGES.API.createItem = true;
+	MESSAGES.API.uploadAttachment = false;
+	MESSAGES.i18n = {
+		getStrings: true
+	};
+	MESSAGES.Connector_Browser = Object.assign(MESSAGES.Connector_Browser, {
+		onPDFFrame: false,
+		onPerformCommand: false,
+		onTabFocus: false,
+		onTabData: true,
+		getExtensionVersion: true
+	});
+}
+
 // Chrome does not support passing arrayBuffers via the message
 // passing protocol, so we convert it to a blob url and then unconvert it
 // on the receiving end.
 // There's been an open bug on the chrome bugtracker to fix this since
 // 2013: https://bugs.chromium.org/p/chromium/issues/detail?id=248548
+// 
+// And with manifestV3 service workers do not support URL.createObjectURL
+// so our best chance is to just pass the array bytes
+// but there's a 64MB limit or Chrome literally crashes
+const MAX_CONTENT_SIZE = 8 * (1024 * 1024);
 function packArrayBuffer(arrayBuffer) {
-	if (Zotero.isFirefox) return arrayBuffer;
+	if (!Zotero.isChromium) return arrayBuffer;
+	if (Zotero.isManifestV3) {
+		let array = Array.from(new Uint8Array(arrayBuffer));
+		if (array.length > MAX_CONTENT_SIZE) {
+			// Truncating to MAX_CONTENT_SIZE. The largest filetype we save is images, and
+			// 8MB limit should be good for 99.9% of the cases.
+			array = array.slice(0, MAX_CONTENT_SIZE);
+		}
+		return array;
+	}
 	return URL.createObjectURL(new Blob([arrayBuffer]));
 }
 
-async function unpackArrayBuffer(blobURL) {
-	if (Zotero.isFirefox) return blobURL;
-	let blob = await (await fetch(blobURL)).blob();
+async function unpackArrayBuffer(packedBuffer) {
+	if (!Zotero.isChromium) return packedBuffer;
+	if (Zotero.isManifestV3) {
+		return new Uint8Array(packedBuffer).buffer
+	}
+	let blob = await (await fetch(packedBuffer)).blob();
 	return new Promise((resolve) => {
 		var fileReader = new FileReader();
 		fileReader.onload = function(event) {

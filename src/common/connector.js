@@ -37,16 +37,12 @@ Zotero.Connector = new function() {
 	 * @param {Function} callback
 	 */
 	this.checkIsOnline = async function() {
-		// Only check once in bookmarklet
-		if(Zotero.isBookmarklet && this.isOnline !== null) {
-			return this.isOnline;
-		}
-
 		return this.ping({}).catch(function(e) {
-			if (e.status == 0) {
-				return false;
+			if (e.status != 0) {
+				Zotero.debug("Checking if Zotero is online returned a non-zero HTTP status.");
+				Zotero.logError(e);
 			}
-			throw e;
+			return false;
 		});
 	};
 
@@ -57,11 +53,17 @@ Zotero.Connector = new function() {
 		this.ping(payload);
 	}
 	
+	// For use in injected pages
+	this.getPref = function(pref) {
+		return Zotero.Connector[pref];
+	}
+	
 	this.ping = function(payload={}) {
 		return Zotero.Connector.callMethod("ping", payload).then(function(response) {
 			if (response && 'prefs' in response) {
 				Zotero.Connector.shouldReportActiveURL = !!response.prefs.reportActiveURL;
 				Zotero.Connector.automaticSnapshots = !!response.prefs.automaticSnapshots;
+				Zotero.Connector.googleDocsAddNoteEnabled = !!response.prefs.googleDocsAddNoteEnabled;
 			}
 			return response || {};
 		});
@@ -85,10 +87,6 @@ Zotero.Connector = new function() {
 	 * @param {Function} callback - Function to be called when requests complete.
 	 */
 	this.callMethod = async function(options, data, tab) {
-		// Don't bother trying if not online in bookmarklet
-		if (Zotero.isBookmarklet && this.isOnline === false) {
-			throw new Zotero.Connector.CommunicationError("Zotero Offline", 0);
-		}
 		if (typeof options == 'string') {
 			options = {method: options};
 		}
@@ -171,10 +169,18 @@ Zotero.Connector = new function() {
 		.then(newCallback)
 		// Unexpected error, including a timeout
 		.catch(function (e) {
-			Zotero.logError(e);
+			// Don't log status 0 (Zotero offline) report, it's chatty and needless
+			if (e instanceof Zotero.HTTP.StatusError && e.status === 0) {
+				Zotero.debug(e);
+			}
+			else {
+				Zotero.logError(e);
+			}
 			deferred.reject(e);
 		});
-		return deferred.promise;
+		let result = await deferred.promise;
+		this._handleIntegrationTabClosed(method, tab);
+		return result;
 	},
 	
 	/**
@@ -185,7 +191,7 @@ Zotero.Connector = new function() {
 	 * @param	{Object} data RPC data. See documentation above.
 	 */
 	this.callMethodWithCookies = function(options, data, tab) {
-		if (Zotero.isBrowserExt && !Zotero.isBookmarklet) {
+		if (Zotero.isBrowserExt) {
 			let cookieParams = {
 				url: tab.url
 			};
@@ -233,6 +239,45 @@ Zotero.Connector = new function() {
 		
 		return this.callMethod(options, data, tab);
 	}
+
+	/**
+	 * If running an integration method check if the tab is still available to receive
+	 * a response from Zotero and if not - respond with an error message so that
+	 * the integration operation can be discarded in Zotero
+	 */
+	this._handleIntegrationTabClosed = async function(method, tab) {
+		if (tab && Zotero.isBrowserExt) {
+			if (method.startsWith('document/')) {
+				try {
+					let retrievedTab = await browser.tabs.get(tab.id);
+					if (retrievedTab.discarded) throw new Error('Integration tab is discarded');
+				} catch (e) {
+					Zotero.logError(e);
+					let response = await Zotero.Connector.callMethod({method: 'document/respond', timeout: false},
+						JSON.stringify({
+							error: 'Tab Not Available Error',
+							message: e.message,
+							stack: e.stack
+						})
+					);
+					let method = response.command.split('.')[1];
+					while (method != 'complete') {
+						let response;
+						if (method == 'displayAlert') {
+							// Need to return an error for displayAlert so that it can be displayed in the client.
+							response = await Zotero.Connector.callMethod({method: 'document/respond', timeout: false},
+								JSON.stringify({error: 'Error'})
+							);
+						}
+						else {
+							response = await Zotero.Connector.callMethod({method: 'document/respond', timeout: false}, "");
+						}
+						method = response.command.split('.')[1];
+					}
+				}
+			}
+		}
+	}
 }
 
 Zotero.Connector.CommunicationError = function (message, status=0, value='') {
@@ -270,6 +315,10 @@ Zotero.Connector_Debug = new function() {
 	 */
 	this.submitReport = async function() {
 		let body = await Zotero.Debug.get();
+		let sysInfo = JSON.parse(await Zotero.getSystemInfo());
+		let errors = (await Zotero.Errors.getErrors()).join('\n');
+		sysInfo.timestamp = new Date().toString();
+		body = `${errors}\n\n${JSON.stringify(sysInfo, null, 2)}\n\n${body}`;
 		let xmlhttp = await Zotero.HTTP.request("POST", ZOTERO_CONFIG.REPOSITORY_URL + "report?debug=1", {body});
 
 		let responseXML;

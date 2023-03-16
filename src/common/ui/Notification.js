@@ -24,8 +24,8 @@
 */
 
 (function() {
-var win = Zotero.isBookmarklet ? window.parent : window,
-	doc = Zotero.isBookmarklet ? window.parent.document : window.document;
+var win = window,
+	doc = window.document;
 win.Zotero = win.Zotero || {};
 Zotero.UI = Zotero.UI || {};
 
@@ -58,31 +58,30 @@ Zotero.UI.Notification = function(text, buttons) {
 	this.elems = {};
 };
 
-// TODO: Put styles in a stylesheet that we insert, so we can use pseudo-classes properly, do proper
-// resetting, etc.
+// TODO: Convert to CE and put style in the shadow root
 Zotero.UI.Notification.rootStyle = {
 	// Stay on top of other page elements
-	position: "relative",
+	position: "fixed",
+	top: 0,
+	left: 0,
 	zIndex: 2147483647,
-	/* Copy the notification style from Firefox */
-	background: "linear-gradient(#ffe13e, #ffc703)",
-	color: "rgba(0,0,0,0.95)",
-	borderBottom: "1px solid #bf8a01",
-	padding: "3px 10px 4px",
+	width: "100%",
+	background: "rgb(255, 234, 80)",
+	borderBottom: "#a9a9a9 .5px solid",
+	padding: "3px 2em 4px",
 	display: "flex",
 	flexDirection: "row",
+	lineHeight: "2.2em",
 	alignItems: "center",
 	boxSizing: "border-box",
 	cursor: "default",
-	transition: "margin-top 300ms, opacity 300ms"
 };
 
 Zotero.UI.Notification.textStyle = {
 	fontFamily: "Lucida Grande, Tahoma, sans",
-	fontSize: "8.5pt",
-	lineHeight: "1.4em",
+	fontSize: "13.5px",
 	fontWeight: "bold",
-	color: "rgba(0,0,0,0.95)"
+	color: "black",
 };
 
 Zotero.UI.Notification.buttonStyle = Object.assign({

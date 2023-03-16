@@ -35,7 +35,7 @@ if(window.top) {
 	} catch(e) {};
 }
 
-if (isTopWindow || Zotero.isBookmarklet) {
+if (isTopWindow) {
 	//
 	// Progress window initialization
 	//
@@ -49,7 +49,6 @@ if (isTopWindow || Zotero.isBookmarklet) {
 	var frameInitialized;
 	var closeTimeoutID;
 	window.Zotero.progressWindowReady = frameReadyDeferred.promise;
-	frameReadyDeferred.promise.then(() => frameInitialized = true);
 	
 	var currentSessionID;
 	var createdSessions = new Set();
@@ -63,39 +62,16 @@ if (isTopWindow || Zotero.isBookmarklet) {
 	var blurred = false;
 	var frameSrc;
 	var frameIsHidden = false;
-	if (Zotero.isBookmarklet) {
-		frameSrc = ZOTERO_CONFIG.BOOKMARKLET_URL + 'progressWindow/progressWindow.html';
-	}
-	else if (Zotero.isSafari) {
-		frameSrc = `${safari.extension.baseURI}safari/` + 'progressWindow/progressWindow.html';
-	}
-	else {
-		frameSrc = browser.extension.getURL('progressWindow/progressWindow.html');
-	}
+	frameSrc = Zotero.getExtensionURL('progressWindow/progressWindow.html');
 	var scrollX;
 	var scrollY;
 	
 	async function sendMessage(name, data = {}) {
-		if (!Zotero.isBookmarklet) {
-			return Zotero.Messaging.sendMessage(name, data, null, null);
-		}
-		var frame = await frameReadyDeferred.promise;
-		if (frame) {
-			return frame.contentWindow.postMessage([name, data], "*");
-		} else {
-			throw new Error("Attempting to message progressWindow frame before it has been loaded");
-		}
+		return Zotero.Messaging.sendMessage(name, data, null, null);
 	}
 
 	function addMessageListener(name, handler) {
-		if (!Zotero.isBookmarklet) {
-			return Zotero.Messaging.addMessageListener(name, handler);
-		}
-		window.top.addEventListener('message', function(event) {
-			if (event.data && event.data[0] == name) {
-				handler(event.data[1]);
-			}
-		});
+		return Zotero.Messaging.addMessageListener(name, handler);
 	}
 	
 	// The progress window component is initialized asynchronously, so queue updates and send them
@@ -192,11 +168,7 @@ if (isTopWindow || Zotero.isBookmarklet) {
 	function hideFrame() {
 		insideIframe = false;
 		
-		if (Zotero.isBookmarklet) {
-			var frame = window.top.document.getElementById(frameID);
-		} else {
-			var frame = document.getElementById(frameID);
-		}
+		var frame = document.getElementById(frameID);
 		if (frame) {
 			frame.style.display = 'none';
 			addEvent("hidden");
@@ -268,6 +240,8 @@ if (isTopWindow || Zotero.isBookmarklet) {
 			maxWidth: '95%',
 			height: '120px',
 			border: "none",
+			padding: "none",
+			margin: "initial",
 			zIndex: 2147483647,
 			display: 'none'
 		};
@@ -383,9 +357,7 @@ if (isTopWindow || Zotero.isBookmarklet) {
 		
 		addMessageListener('progressWindowIframe.close', function() {
 			hideFrame();
-			if (!Zotero.isBookmarklet) {
-				window.focus();
-			}
+			window.focus();
 		});
 
 		await frameReadyDeferred.promise;
@@ -399,6 +371,7 @@ if (isTopWindow || Zotero.isBookmarklet) {
 	async function showFrame() {
 		let iframe
 		if (!frameInitialized) {
+			frameInitialized = true;
 			iframe = await initFrame();
 		} else {
 			iframe = await frameReadyDeferred.promise;
@@ -497,8 +470,7 @@ if (isTopWindow || Zotero.isBookmarklet) {
 	
 	Zotero.Messaging.addMessageListener("progressWindow.done", (returnValue) => {
 		closeOnLeave = true;
-		if (Zotero.isBrowserExt
-				&& document.location.href.startsWith(browser.extension.getURL('confirm.html'))) {
+		if (document.location.href.startsWith(Zotero.getExtensionURL('confirm.html'))) {
 			setTimeout(function() {
 				window.close();
 			}, 1000);
@@ -507,7 +479,10 @@ if (isTopWindow || Zotero.isBookmarklet) {
 			startCloseTimer(3000);
 		}
 		else {
-			addError(returnValue[1] || "translationError");
+			if (returnValue.length < 2) {
+				returnValue.push('translationError');
+			}
+			addError(returnValue[1], ...returnValue.slice(2));
 			startCloseTimer(8000);
 		}
 	});

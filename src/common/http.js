@@ -28,17 +28,17 @@
  * @namespace
  */
 Zotero.HTTP = new function() {
-	this.StatusError = function(xmlhttp, url) {
+	this.StatusError = function(xmlhttp, url, responseText) {
 		this.message = `HTTP request to ${url} rejected with status ${xmlhttp.status}`;
 		this.status = xmlhttp.status;
 		try {
-			this.responseText = typeof xmlhttp.responseText == 'string' ? xmlhttp.responseText : undefined;
+			this.responseText = responseText;
 		} catch (e) {}
 	};
 	this.StatusError.prototype = Object.create(Error.prototype);
 
-	this.TimeoutError = function(ms) {
-		this.message = `HTTP request has timed out after ${ms}ms`;
+	this.TimeoutError = function(url, ms) {
+		this.message = `HTTP request to ${url} has timed out after ${ms}ms`;
 	};
 	this.TimeoutError.prototype = Object.create(Error.prototype);
 	
@@ -74,56 +74,45 @@ Zotero.HTTP = new function() {
 			successCodes: null
 		}, options);
 		
-		var useContentXHR = false;
-		
-		if (Zotero.isInject) {
-			// The privileged XHR that Firefox makes available to content scripts so that they
-			// can make cross-domain requests doesn't include the Referer header in requests [1],
-			// so sites that check for it don't work properly. As long as we're not making a
-			// cross-domain request, we can use the content XHR that it provides, which does
-			// include Referer. Chrome's XHR in content scripts includes Referer by default.
-			//
-			// [1] https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Content_scripts#XHR_and_Fetch
-			if (Zotero.HTTP.isSameOrigin(url) && !(Zotero.isSafari && options.headers['User-Agent'])) {
-				if (typeof content != 'undefined' && content.XMLHttpRequest) {
-					Zotero.debug("Using content XHR");
-					useContentXHR = true;
-				}
+		// There is no reason to run xhr not from background page for web extensions since those
+		// requests send full browser cookies.
+		// That is not the case with Safari though and without cookies requests to proxied
+		// resources fail, so we use on-page xhr there.
+		// However, if the request requires replacing user-agent, we still send the request via
+		// the background page since we're unable to replace user-agent via an on-page xhr and
+		// since user-agent option is explicitly set, it takes priority.
+		let sameOriginRequestViaSafari = Zotero.isSafari && Zotero.HTTP.isSameOrigin(url) && !options.headers['User-Agent'];
+		if (Zotero.isInject && !sameOriginRequestViaSafari) {
+			// Make a cross-origin request via the background page, parsing the responseText with
+			// DOMParser and returning a Proxy with 'response' set to the parsed document
+			let isDocRequest = options.responseType == 'document';
+			let coOptions = Object.assign({}, options);
+			if (isDocRequest) {
+				coOptions.responseType = 'text';
 			}
-			else {
-				if (Zotero.isBookmarklet) {
-					Zotero.debug("HTTP: Attempting cross-site request from bookmarklet; this may fail");
-				}
-				else {
-					// Make a cross-origin request via the background page, parsing the responseText with
-					// DOMParser and returning a Proxy with 'response' set to the parsed document
-					let isDocRequest = options.responseType == 'document';
-					let coOptions = Object.assign({}, options);
-					if (isDocRequest) {
-						coOptions.responseType = 'text';
-					}
-					if (Zotero.isSafari && options.headers['User-Agent']) {
-						coOptions.headers['Cookie'] = document.cookie;
-					}
-					return Zotero.COHTTP.request(method, url, coOptions).then(function (xmlhttp) {
-						if (!isDocRequest) return xmlhttp;
-						
-						Zotero.debug("Parsing cross-origin response for " + url);
-						let parser = new DOMParser();
-						let contentType = xmlhttp.getResponseHeader("Content-Type");
-						if (contentType != 'application/xml' && contentType != 'text/xml') {
-							contentType = 'text/html';
-						}
-						let doc = parser.parseFromString(xmlhttp.responseText, contentType);
-						
-						return new Proxy(xmlhttp, {
-							get: function (target, name) {
-								return name == 'response' ? doc : target[name];
-							}
-						});
-					});
-				}
+			if (Zotero.isSafari && options.headers['User-Agent']) {
+				coOptions.headers['Cookie'] = document.cookie;
 			}
+			return Zotero.COHTTP.request(method, url, coOptions).then(function (xmlhttp) {
+				if (!isDocRequest || Zotero.isManifestV3) {
+					xmlhttp.responseType = options.responseType;
+					return xmlhttp;
+				}
+				
+				Zotero.debug("Parsing cross-origin response for " + url);
+				let parser = new DOMParser();
+				let contentType = xmlhttp.getResponseHeader("Content-Type");
+				if (contentType != 'application/xml' && contentType != 'text/xml') {
+					contentType = 'text/html';
+				}
+				let doc = parser.parseFromString(xmlhttp.responseText, contentType);
+				
+				return new Proxy(xmlhttp, {
+					get: function (target, name) {
+						return name == 'response' ? doc : target[name];
+					}
+				});
+			});
 		}
 		
 		let logBody = '';
@@ -156,46 +145,89 @@ Zotero.HTTP = new function() {
 			await Zotero.WebRequestIntercept.replaceUserAgent(url, options.headers['User-Agent']);
 			delete options.headers['User-Agent'];
 		}
+		if (options.headers['Referer']) {
+			options.referrer = options.headers['Referer'];
+			delete options.headers['Referer'];
+		}
 		Zotero.debug(`HTTP ${method} ${url}${logBody}`);
-		
-		var xmlhttp = useContentXHR ? new content.XMLHttpRequest() : new XMLHttpRequest();
-		xmlhttp.timeout = options.timeout;
-		var promise = Zotero.HTTP._attachHandlers(url, xmlhttp, options);
-		
-		xmlhttp.open(method, url, true);
-
-		for (let header in options.headers) {
-			xmlhttp.setRequestHeader(header, options.headers[header]);
+		if (options.responseType == '') {
+			options.responseType = 'text';
 		}
 		
-		xmlhttp.responseType = options.responseType || '';
-		
-		// Maybe should provide "mimeType" option instead. This is xpcom legacy, where responseCharset
-		// could be controlled manually
-		if (options.responseCharset) {
-			xmlhttp.overrideMimeType("text/plain; charset=" + options.responseCharset);
+		if (options.timeout) {
+			var abortController = new AbortController();
+			setTimeout(abortController.abort.bind(abortController), options.timeout);
 		}
-		
-		xmlhttp.send(options.body);
-		
-		return promise.then(function(xmlhttp) {
-			if (options.debug) {
-				if (xmlhttp.responseType == '' || xmlhttp.responseType == 'text') {
-					Zotero.debug(`HTTP ${xmlhttp.status} response: ${xmlhttp.responseText}`);
-				}
-				else {
-					Zotero.debug(`HTTP ${xmlhttp.status} response`);
-				}
-			}	
-			
-			let invalidDefaultStatus = options.successCodes === null &&
-				(xmlhttp.status < 200 || xmlhttp.status >= 300);
-			let invalidStatus = Array.isArray(options.successCodes) && !options.successCodes.includes(xmlhttp.status);
-			if (invalidDefaultStatus || invalidStatus) {
-				throw new Zotero.HTTP.StatusError(xmlhttp, url);
+		let headers = new Headers(options.headers);
+		try {
+			let fetchOptions = {
+				method,
+				headers,
+				body: options.body,
+				credentials: Zotero.isInject ? 'same-origin' : 'include',
+				referrer: options.referrer,
+				referrerPolicy: options.referrer ? "unsafe-url" : "strict-origin-when-cross-origin"
 			}
-			return xmlhttp;
-		});
+			if (abortController) {
+				fetchOptions.signal = abortController.signal;
+			}
+			var response = await fetch(url, fetchOptions);
+		} catch (e) {
+			var err;
+			if (e.name == 'AbortError') {
+				err = new Zotero.HTTP.TimeoutError(url, options.timeout);
+			}
+			else {
+				err = new Zotero.HTTP.StatusError({status: 0}, url);
+			}
+			// Zotero.logError(err);
+			throw err;
+		}
+		
+		let responseData;
+		if (options.responseType == 'arraybuffer') {
+			responseData = await response.arrayBuffer();
+		}
+		else if (options.responseType == 'json') {
+			responseData = await response.json();
+		}
+		else {
+			responseData = await response.text();
+		} 
+
+		if (options.debug) {
+			if (options.responseType == '' || options.responseType == 'text') {
+				Zotero.debug(`HTTP ${response.status} response: ${responseData}`);
+			}
+			else {
+				Zotero.debug(`HTTP ${xmlhttp.status} response`);
+			}
+		}
+		
+		let invalidDefaultStatus = options.successCodes === null &&
+			(response.status < 200 || response.status >= 300);
+		let invalidStatus = Array.isArray(options.successCodes) && !options.successCodes.includes(response.status);
+		if (invalidDefaultStatus || invalidStatus) {
+			throw new Zotero.HTTP.StatusError(response, url, typeof responseData == 'string' ? responseData : '');
+		}
+		
+		let responseHeaders = {};
+		let responseHeadersString = "";
+		for (let [key, value] of response.headers.entries()) {
+			responseHeaders[key.toLowerCase()] = value;
+			responseHeadersString += `${key}: ${value}\r\n`;
+		}
+		
+		return {
+			responseText: typeof responseData == 'string' ? responseData : '',
+			response: responseData,
+			responseURL: response.url,
+			responseType: options.responseType,
+			status: response.status,
+			statusText: response.statusText,
+			getAllResponseHeaders: () => responseHeadersString,
+			getResponseHeader: name => responseHeaders[name.toLowerCase()]
+		};
 	};
 	/**
 	* Send an HTTP GET request via XMLHTTPRequest
@@ -243,12 +275,10 @@ Zotero.HTTP = new function() {
 	/**
 	 * Adds a ES6 Proxied location attribute
 	 * @param doc
-	 * @param docUrl
+	 * @param docURL
 	 */
 	this.wrapDocument = function(doc, docURL) {
-		let url = require('url');
-		docURL = url.parse(docURL);
-		docURL.toString = () => this.href;
+		docURL = new URL(docURL);
 		var wrappedDoc = new Proxy(doc, {
 			get: function (t, prop) {
 				if (prop === 'location') {
@@ -274,34 +304,6 @@ Zotero.HTTP = new function() {
 			}
 		});
 		return wrappedDoc;
-	};
-	
-	
-	/**
-	 * Adds request handlers to the XMLHttpRequest and returns a promise that resolves when
-	 * the request is complete. xmlhttp.send() still needs to be called, this just attaches the
-	 * handler
-	 *
-	 * See {@link Zotero.HTTP.request} for parameters
-	 * @private
-	 */
-	this._attachHandlers = function(url, xmlhttp, options) {
-		var deferred = Zotero.Promise.defer();
-		xmlhttp.onload = () => deferred.resolve(xmlhttp);
-		xmlhttp.onerror = xmlhttp.onabort = function() {
-			var e = new Zotero.HTTP.StatusError(xmlhttp, url);
-			if (options.successCodes === false) {
-				deferred.resolve(xmlhttp);
-			} else {
-				deferred.reject(e);
-			}
-		};
-		xmlhttp.ontimeout = function() {
-			var e = new Zotero.HTTP.TimeoutError(xmlhttp.timeout);
-			Zotero.logError(e);
-			deferred.reject(e);
-		};
-		return deferred.promise;
 	};
 }
 
