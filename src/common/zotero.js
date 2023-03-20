@@ -29,14 +29,8 @@ var Zotero = global.Zotero = new function() {
 	this.version = "5.0";
 	this.locale = typeof navigator != "undefined" ? navigator.languages[0] : 'en';
 	this.isConnector = true;
-<<<<<<< HEAD
-	this.isFx = false; // Old flag for 4.0 connector, probably not used anymore
-	/* this.isBookmarklet = SET IN BUILD SCRIPT */;
-	/* this.allowRepoTranslatorTester = SET IN BUILD SCRIPT */;
-=======
 	// Old flag for 4.0 connector, probably not used anymore
 	this.isFx = false;
->>>>>>> zmaster
 	
 	// For autocomplete in IDEs
 	this.allowRepoTranslatorTester = this.isManifestV3
