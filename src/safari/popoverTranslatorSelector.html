@@ -34,7 +34,6 @@
 </head>
 <body>
 <menu>
-<<<<<<< HEAD
 	<li><a id="zotero-save-page-with-snapshot" href="javascript:void(0)">Save to Juris-M (Web Page with Snapshot)</a></li>
 	<li><a id="zotero-save-page-without-snapshot" href="javascript:void(0)">Save to Juris-M (Web Page without Snapshot)</a></li>
 	<li id="zotero-save-PDF" style="display: none"><a href="javascript:void(0)">Save to Juris-M (PDF)</a></li>
@@ -97,18 +96,10 @@
 					.insertBefore(saveWithoutSnapshotElem, saveWithSnapshotElem);
 			}
 
-<<<<<<< HEAD
-			if (tab.contentType == 'application/pdf' ||
-				tab.isPDFFrame) {
-				document.getElementById('zotero-save-page-with-snapshot').textContent = "Save to Juris-M (PDF)";
-				document.getElementById('zotero-save-page-without-snapshot').style.display = 'none';
-			}
-=======
 			var isPDF = tab.contentType == 'application/pdf' || tab.isPDFFrame;
 			saveWithoutSnapshotElem.style.display = isPDF ? 'none' : null;
 			saveWithSnapshotElem.style.display = isPDF ? 'none' : null;
 			savePDFElem.style.display = isPDF ? null : 'none';
->>>>>>> be409ed6679d90a5633e02f82f2e5e4108cc063a
 
 			var translators = tab.translators;
 			if (!translators || event.target.identifier != 'zotero-translatorSelector') return;
