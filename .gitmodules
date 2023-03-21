@@ -1,6 +1,6 @@
 [submodule "src/zotero"]
 	path = src/zotero
-	url = git@github.com:Juris-M/zotero.git
+	url = https://github.com/Juris-M/zotero.git
 	branch = jurism-6.0.20
 [submodule "src/zotero-google-docs-integration"]
 	path = src/zotero-google-docs-integration
@@ -8,13 +8,13 @@
 	branch = master
 [submodule "deployer"]
 	path = deployer
-	url = git@github.com:Juris-M/deployer.git
+	url = https://github.com/Juris-M/deployer.git
 [submodule "src/translate"]
 	path = src/translate
-	url = https://github.com/zotero/translate.git
+	url = https://github.com/Juris-M/translate.git
 [submodule "src/utilities"]
 	path = src/utilities
-	url = https://github.com/zotero/utilities.git
+	url = https://github.com/Juris-M/utilities.git
 [submodule "lib/SingleFile-Lite"]
 	path = lib/SingleFile-Lite
 	url = https://github.com/gildas-lormeau/SingleFile-Lite.git
