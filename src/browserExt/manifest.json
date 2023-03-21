@@ -75,7 +75,7 @@
 	"applications": {
 		"gecko": {
 			"id": "jurism@juris-m.github.io",
-			"update_url": "https://our.law.nagoya-u.ac.jp/AUTOFILLED",
+			"update_url": "https://jurism.xyz/AUTOFILLED",
 			"strict_min_version": "51.0"
 		}
 	}
