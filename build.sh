@@ -21,8 +21,10 @@
 CWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )";
 
 case "$(uname -s)" in
-   CYGWIN*) IS_CYGWIN=1 ;;
+    CYGWIN*) IS_CYGWIN=1; break ;;
+    *) IS_CYGWIN=0 ;;
 esac
+
 if [ $IS_CYGWIN -gt 0 ]; then
     CYGWIN_CWD="$(pwd | xargs cygpath -w)";
 fi
