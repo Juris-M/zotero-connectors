@@ -9,12 +9,15 @@
 [submodule "deployer"]
 	path = deployer
 	url = https://github.com/Juris-M/deployer.git
+	branch = master
 [submodule "src/translate"]
 	path = src/translate
 	url = https://github.com/Juris-M/translate.git
+	branch = master
 [submodule "src/utilities"]
 	path = src/utilities
 	url = https://github.com/Juris-M/utilities.git
+	branch = master
 [submodule "lib/SingleFile-Lite"]
 	path = lib/SingleFile-Lite
 	url = https://github.com/gildas-lormeau/SingleFile-Lite.git
