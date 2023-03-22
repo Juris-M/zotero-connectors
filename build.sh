@@ -18,10 +18,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-CWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+CWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )";
+
 case "$(uname -s)" in
    CYGWIN*) IS_CYGWIN=1 ;;
 esac
+if [ $IS_CYGWIN -gt 0 ]; then
+    CYGWIN_CWD="$(pwd | xargs cygpath -w)";
+fi
+
+
 if [ -f "$CWD/config.sh" ]; then
 	. "$CWD/config.sh"
 fi
@@ -37,7 +43,11 @@ DONE
 	exit 1
 }
 
-GULP=$CWD/node_modules/gulp/bin/gulp.js
+if [ $IS_CYGWIN -gt 0 ]; then
+	GULP="$CYGWIN_CWD/node_modules/gulp/bin/gulp.js"
+else
+	GULP="$CWD/node_modules/gulp/bin/gulp.js"
+fi
 
 BUILD_BROWSER_EXT=0
 BUILD_SAFARI=0
@@ -219,7 +229,7 @@ function copyResources {
 	
 	# Copy node_modules libs
 	mkdir "$browser_builddir/lib"
-	
+
 	if [ ${#LIBS[@]} -gt 0 ]; then
 		cp "${LIBS[@]}" "$browser_builddir/lib"
 	fi
@@ -303,10 +313,11 @@ fi
 
 if [[ $BUILD_BROWSER_EXT == 1 ]] || [[ $BUILD_SAFARI == 1 ]]; then
 	"$GULP" -v >/dev/null 2>&1 || { echo >&2 "gulp not found -- aborting"; exit 1; }
-
 	# Update scripts
 	if [ ! -z $DEBUG ]; then
 		"$GULP" process-custom-scripts --connector-version "$VERSION" > "$LOG" 2>&1
+		PID=$!
+		wait $PID
 	else
 		"$GULP" process-custom-scripts --connector-version "$VERSION" -p > "$LOG" 2>&1
 	fi

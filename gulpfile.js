@@ -31,6 +31,7 @@ const through = require('through2');
 const gulp = require('gulp');
 const plumber = require('gulp-plumber');
 const babel = require('@babel/core');
+const pth = require('path');
 const schemaJSON = require('./src/zotero/resource/schema/global/schema.json');
 const argv = require('yargs')
 	.boolean('p')
@@ -184,8 +185,8 @@ function replaceScriptsHTML(string, match, scripts) {
 function processFile() {
 	return through.obj(async function(file, enc, cb) {
 		console.log(file.path.slice(file.cwd.length));
-		var offset = file.cwd.split('/').length;
-		var parts = file.path.split('/');
+		var offset = file.cwd.split(pth.sep).length;
+		var parts = file.path.split(pth.sep);
 		var basename = parts[parts.length-1];
 		var ext = basename.split('.')[1];
 		for (var i = offset; i < parts.length; i++) {
