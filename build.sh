@@ -21,7 +21,7 @@
 CWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )";
 
 case "$(uname -s)" in
-    CYGWIN*) IS_CYGWIN=1; break ;;
+    CYGWIN*) IS_CYGWIN=1; ;;
     *) IS_CYGWIN=0 ;;
 esac
 
