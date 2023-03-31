@@ -1,8 +1,8 @@
 {
-	"name": "Zotero Connector",
+	"name": "Jurism Connector",
 	"manifest_version": 3,
 	"version": "AUTOFILLED",
-	"description": "Save references to Zotero from your web browser",
+	"description": "Save references to Jurism from your web browser",
 	"default_locale": "en",
 	"action": {
 		"default_icon": {
@@ -10,7 +10,7 @@
 			"32": "images/treeitem-webpage-gray@2x.png",
 			"48": "images/treeitem-webpage-gray@48px.png"
 		},
-		"default_title": "Save to Zotero"
+		"default_title": "Save to Jurism"
 	},
 	"host_permissions": ["http://*/*", "https://*/*"],
 	"permissions": ["tabs", "contextMenus", "cookies", "scripting",
@@ -67,7 +67,7 @@
 	"content_security_policy": {
 		"extension_pages": "script-src 'self'; object-src 'self'"
 	},
-	"homepage_url": "https://www.zotero.org/",
+	"homepage_url": "https://juris-m.github.io/",
 	"icons": {
 		"16": "Icon-16.png",
 		"48": "Icon-48.png",
@@ -85,5 +85,5 @@
 			}
 		}
 	},
-	"minimum_chrome_version": "55"
+	"minimum_chrome_version": "88"
 }
