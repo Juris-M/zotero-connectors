@@ -5,11 +5,11 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://www.zotero.org/styles/#importConfirm=\\1"
+				"regexSubstitution": "https://jurism.xyz/updater/styles/#importConfirm=\\1"
 			}
 		},
 		"condition": {
-			"regexFilter": "^https://www\\.zotero\\.org/styles/([^#?].+)$",
+			"regexFilter": "^https://jurism\\.xyz/updater/styles/([^#?].+)$",
 			"resourceTypes": ["main_frame"]
 		}
 	}
