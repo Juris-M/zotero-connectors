@@ -745,7 +745,7 @@ Zotero.Connector_Browser = new function() {
 		});
 		let withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
 			Zotero.Prefs.get('automaticSnapshots');
-		let title = `Save to Zotero (Web Page ${withSnapshot ? 'with' : 'without'} Snapshot)`;
+		let title = `Save to Jurism (Web Page ${withSnapshot ? 'with' : 'without'} Snapshot)`;
 		browser.action.setTitle({tabId: tab.id, title});
 	}
 
@@ -756,7 +756,7 @@ Zotero.Connector_Browser = new function() {
 		});
 		browser.action.setTitle({
 			tabId: tab.id,
-			title: "Save to Zotero (PDF)"
+			title: "Save to Jurism (PDF)"
 		});
 	}
 
@@ -785,13 +785,13 @@ Zotero.Connector_Browser = new function() {
 		var fns = [];
 		fns.push(() => browser.contextMenus.create({
 			id: "zotero-context-menu-webpage-withSnapshot-save",
-			title: "Save to Zotero (Web Page with Snapshot)",
+			title: "Save to Jurism (Web Page with Snapshot)",
 			parentId: parentID,
 			contexts: ['page', ...buttonContext]
 		}));
 		fns.push(() => browser.contextMenus.create({
 			id: "zotero-context-menu-webpage-withoutSnapshot-save",
-			title: "Save to Zotero (Web Page without Snapshot)",
+			title: "Save to Jurism (Web Page without Snapshot)",
 			parentId: parentID,
 			contexts: ['page', ...buttonContext]
 		}));
@@ -807,7 +807,7 @@ Zotero.Connector_Browser = new function() {
 	function _showPDFContextMenuItem(parentID) {
 		browser.contextMenus.create({
 			id: "zotero-context-menu-pdf-save",
-			title: "Save to Zotero (PDF)",
+			title: "Save to Jurism (PDF)",
 			parentId: parentID,
 			contexts: ['all']
 		});

@@ -265,8 +265,8 @@ Zotero.Connector_Browser = new function() {
 		
 		let contextItemList = [];
 		const finalItems = [
-			["withSnapshot", "Save to Zotero (Web Page with Snapshot)"],
-			["withoutSnapshot", "Save to Zotero (Web Page without Snapshot)"]
+			["withSnapshot", "Save to Jurism (Web Page with Snapshot)"],
+			["withoutSnapshot", "Save to Jurism (Web Page without Snapshot)"]
 		];
 
 		if (translators && translators.length) {
@@ -275,7 +275,7 @@ Zotero.Connector_Browser = new function() {
 			}
 			[image, tooltip] = _showTranslatorIcon(translators[0], tab);
 		} else if (isPDF) {
-			contextItemList.push(["pdf", "Save to Zotero (PDF)"]);
+			contextItemList.push(["pdf", "Save to Jurism (PDF)"]);
 			[image, tooltip] = _showPDFIcon(tab);
 		} else {
 			[image, tooltip] = _showWebpageIcon(tab);
@@ -313,13 +313,13 @@ Zotero.Connector_Browser = new function() {
 			Zotero.Prefs.get('automaticSnapshots');
 		let image = Zotero.ItemTypes.getImageSrc("webpage-gray").replace('images/', 'images/toolbar/')
 			.replace(`${safari.extension.baseURI}safari/`, '');
-		let tooltip = `"Save to Zotero (Web Page with${withSnapshot ? "" : "out"} Snapshot)"`;
+		let tooltip = `"Save to Jurism (Web Page with${withSnapshot ? "" : "out"} Snapshot)"`;
 		return [image, tooltip];
 	}
 
 	function _showPDFIcon() {
 		let image = "images/toolbar/pdf.png";
-		let tooltip = "Save to Zotero (PDF)";
+		let tooltip = "Save to Jurism (PDF)";
 		return [image, tooltip]
 	}
 
@@ -329,7 +329,7 @@ Zotero.Connector_Browser = new function() {
 			translatorName += " via Zotero Standalone";
 		}
 
-		return "Save to Zotero (" + translatorName + ")";
+		return "Save to Jurism (" + translatorName + ")";
 	}
 	
 };
