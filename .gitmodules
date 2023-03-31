@@ -21,3 +21,4 @@
 [submodule "lib/SingleFile-Lite"]
 	path = lib/SingleFile-Lite
 	url = https://github.com/gildas-lormeau/SingleFile-Lite.git
+	branch = main
