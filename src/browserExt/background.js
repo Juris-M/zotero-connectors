@@ -180,12 +180,12 @@ Zotero.Connector_Browser = new function() {
 	 */
 	this.onIncompatibleStandaloneVersion = function(zoteroVersion, standaloneVersion) {
 		if(_incompatibleVersionMessageShown) return;
-		alert('Juris-M Connector for Chrome '+zoteroVersion+' is incompatible with the running '+
-			'version of Zotero Standalone'+(standaloneVersion ? " ("+standaloneVersion+")" : "")+
-			'. Juris-M Connector will continue to operate, but functionality that relies upon '+
-			'Zotero Standalone may be unavaliable.\n\n'+
+		alert('Jurism Connector for Chrome '+zoteroVersion+' is incompatible with the running '+
+			'version of Jurism Standalone'+(standaloneVersion ? " ("+standaloneVersion+")" : "")+
+			'. Jurism Connector will continue to operate, but functionality that relies upon '+
+			'Jurism Standalone may be unavaliable.\n\n'+
 			'Please ensure that you have installed the latest version of these components. See '+
-			'https://www.zotero.org/download for more details.');
+			'https://juris-m.github.io for more details.');
 		_incompatibleVersionMessageShown = true;
 	}
 	
@@ -595,7 +595,7 @@ Zotero.Connector_Browser = new function() {
 			saveMenuID = "zotero-context-menu-save-menu";
 			browser.contextMenus.create({
 				id: saveMenuID,
-				title: `${Zotero.getString('general_saveTo', 'Zotero')}`,
+				title: `${Zotero.getString('general_saveTo', 'Jurism')}`,
 				contexts: [...buttonContext, 'page', 'selection']
 			});
 		}
@@ -692,10 +692,10 @@ Zotero.Connector_Browser = new function() {
 			var icon, title;
 			if (isOnline) {
 				icon = "images/zotero-new-z-16px.png";
-				title = "Zotero is Online";
+				title = "Jurism is Online";
 			} else {
 				icon = "images/zotero-z-16px-offline.png";
-				title = "Zotero is Offline";
+				title = "Jurism is Offline";
 			}
 			if (typeof message === 'string') {
 				title = message;
@@ -877,7 +877,7 @@ Zotero.Connector_Browser = new function() {
 		});
 		browser.action.setTitle({
 			tabId: tab.id,
-			title: "Juris-M Connector"
+			title: "Jurism Connector"
 		});
 		browser.action.enable(tab.id);
 	}
