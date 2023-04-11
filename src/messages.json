@@ -90,6 +90,9 @@
 	"firstRun_text2": {
 		"message": "If you haven’t yet, <a href=\"$2\">download</a> the standalone $1 application for the best experience."
 	},
+	"firstRun_text3": {
+		"message": "(You can view the $1 Privacy Policy on <a href="$2">the project website</a>)."
+	},
 	"firstRun_acceptButton": {
 		"message": "Got it",
 		"description": "The Accept button for the first-run dialog"

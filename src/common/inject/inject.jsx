@@ -342,7 +342,15 @@ Zotero.Inject = new function() {
 					[
 						clientName,
 						// TODO: Make download URL configurable (instead of just base URL + "download")
-						ZOTERO_CONFIG.WWW_BASE_URL + "download/"
+						ZOTERO_CONFIG.CLIENT_DOWNLOAD_URL
+					]
+				)
+				+ '<br><br>'
+				+ Zotero.getString(
+					'firstRun_text3',
+					[
+						clientName,
+						ZOTERO_CONFIG.PRIVACY_POLICY
 					]
 				)
 		});

@@ -32,8 +32,9 @@ const ZOTERO_CONFIG = {
 	REPOSITORY_RETRY_INTERVAL: 3600, // 1 hour
 	REPOSITORY_CHANNEL: 'trunk',
 	BASE_URI: 'https://zotero.org/',
-	WWW_BASE_URL: 'https://www.zotero.org/',
+	WWW_BASE_URL: 'https://juris-m.github.io/',
 	CLIENT_DOWNLOAD_URL: 'https://juris-m.github.io/release',
+	PRIVACY_POLICY: 'https://juris-m.github.io/privacy',
 	API_URL: 'https://api.zotero.org/',
 	GOOGLE_DOCS_API_URL: "https://script.googleapis.com/v1/scripts/AKfycbw3JAct47AghnQ8HQbu3VVzxW-Sniq3TeMERP9V5kpC2RA4mJswnNm5s7vSz50pkVQV:run",
 	OAUTH: {
