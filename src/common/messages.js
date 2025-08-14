@@ -66,6 +66,7 @@
 const MESSAGE_SEPARATOR = ".";
 var MESSAGES = {
 	Translators: {
+		updateFromRemote: true,
 		get: {
 			background: {
 				preSend: async function(translators) {
@@ -120,6 +121,9 @@ var MESSAGES = {
 			}
 		}
 	},
+	OffscreenManager: {
+		sendMessage: true
+	},
 	Debug: {
 		get: true,
 		bgInit: false,
@@ -136,6 +140,24 @@ var MESSAGES = {
 		checkIsOnline: true,
 		callMethod: true,
 		callMethodWithCookies: true,
+		saveSingleFile: {
+			inject: {
+				preSend: async function(args) {
+					if (Zotero.isChromium) {
+						args[1].snapshotContent = await Zotero.Messaging.sendAsChunks(args[1].snapshotContent);
+					}
+					return args;
+				},
+			},
+			background: {
+				postReceive: async function(args) {
+					if (Zotero.isChromium) {
+						args[1].snapshotContent = Zotero.Messaging.getChunkedPayload(args[1].snapshotContent);
+					}
+					return args;
+				}
+			}
+		},
 		getClientVersion: true,
 		reportActiveURL: false,
 		getPref: true
@@ -143,7 +165,13 @@ var MESSAGES = {
 	Connector_Browser: {
 		onSelect: true,
 		onPageLoad: false,
-		onTranslators: false,
+		onTranslators: {
+			inject: {
+				preSend: async function([translators, ...args]) {
+					return [translators.map(t => t.serialize(TRANSLATOR_PASSING_PROPERTIES)), ...args]
+				},
+			}
+		},
 		injectScripts: true,
 		injectSingleFile: true,
 		isIncognito: true,
@@ -158,9 +186,39 @@ var MESSAGES = {
 		get: true,
 		count: true,
 	},
+	ItemSaver: {
+		saveAttachmentToZotero: true,
+		saveStandaloneAttachmentToZotero: true,
+		saveAttachmentToServer: {
+			inject: {
+				preSend: async function(args) {
+					if (Zotero.isChromium) {
+						let attachment = args[0];
+						if (typeof attachment.data === 'string' && attachment.mimeType === 'text/html') {
+							attachment.data = await Zotero.Messaging.sendAsChunks(attachment.data);
+						}
+					}
+					return args;
+				},
+			},
+			background: {
+				postReceive: async function(args, tab) {
+					if (Zotero.isChromium) {
+						let attachment = args[0];
+						if (typeof attachment.data === 'string' && attachment.mimeType === 'text/html') {
+							attachment.data = Zotero.Messaging.getChunkedPayload(attachment.data);
+						}
+					}
+					args.push(tab);
+					return args;
+				}
+			}
+		}
+	},
 	Errors: {
 		log: false,
 		getErrors: true,
+		getSystemInfo: true,
 	},
 	Messaging: {
 		sendMessage: {
@@ -179,7 +237,8 @@ var MESSAGES = {
 					return args;
 				}
 			},
-		}
+		},
+		receiveChunk: true
 	},
 	API: {
 		authorize: true,
@@ -205,7 +264,7 @@ var MESSAGES = {
 	GoogleDocs_API: {
 		onAuthComplete: false,
 		run: {
-			background: {minArgs: 4}
+			background: {minArgs: 3}
 		},
 		getDocument: true,
 		batchUpdateDocument: true
@@ -215,6 +274,7 @@ var MESSAGES = {
 		getAll: true,
 		getDefault: true,
 		getAsync: true,
+		removeAllCachedTranslators: true,
 		clear: false
 	},
 	Proxies: {
@@ -223,11 +283,14 @@ var MESSAGES = {
 		remove: false,
 		toggleRedirectLoopPrevention: false
 	},
-	Repo: {
-		update: false
-	},
 	WebRequestIntercept: {
 		replaceUserAgent: true,
+	},
+	ContentTypeHandler: {
+		handleImportableStyle: true,
+		handleImportableContent: true,
+		enable: false,
+		disable: false,
 	}
 };
 
@@ -257,7 +320,7 @@ MESSAGES.COHTTP = {
 					let match = xhr.responseHeaders.match(new RegExp(`^${name}: (.*)$`, 'mi'));
 					return match ? match[1] : null;
 				};
-				if (Array.isArray(xhr.response) || (xhr.response.startsWith && xhr.response.startsWith('blob:'))) {
+				if (Array.isArray(xhr.response) && xhr.responseType === "arraybuffer" || (xhr.response.startsWith && xhr.response.startsWith('blob:'))) {
 					xhr.response = await unpackArrayBuffer(xhr.response);
 				} else {
 					xhr.responseText = xhr.response;
@@ -294,7 +357,11 @@ if (Zotero.isSafari) {
 // but there's a 64MB limit or Chrome literally crashes
 const MAX_CONTENT_SIZE = 8 * (1024 * 1024);
 function packArrayBuffer(arrayBuffer) {
-	if (!Zotero.isChromium) return arrayBuffer;
+	if (Zotero.isFirefox) return arrayBuffer;
+	if (Zotero.isSafari) {
+		// Base64 encode the arrayBuffer
+		return Zotero.Utilities.Connector.arrayBufferToBase64(arrayBuffer);
+	}
 	if (Zotero.isManifestV3) {
 		let array = Array.from(new Uint8Array(arrayBuffer));
 		if (array.length > MAX_CONTENT_SIZE) {
@@ -308,7 +375,10 @@ function packArrayBuffer(arrayBuffer) {
 }
 
 async function unpackArrayBuffer(packedBuffer) {
-	if (!Zotero.isChromium) return packedBuffer;
+	if (Zotero.isFirefox) return packedBuffer;
+	if (Zotero.isSafari) {
+		return Zotero.Utilities.Connector.base64ToArrayBuffer(packedBuffer);
+	}
 	if (Zotero.isManifestV3) {
 		return new Uint8Array(packedBuffer).buffer
 	}

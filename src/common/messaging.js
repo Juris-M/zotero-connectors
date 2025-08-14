@@ -29,6 +29,7 @@
  */
 Zotero.Messaging = new function() {
 	var _messageListeners = {};
+	var _chunkedPayloads = {};
 	
 	/**
 	 * Add a message listener
@@ -96,13 +97,16 @@ Zotero.Messaging = new function() {
 	/**
 	 * Sends a message to a tab
 	 */
-	this.sendMessage = async function(messageName, args, tab, frameId=0) {
+	this.sendMessage = async function(messageName, args, tab=null, frameId=0) {
 		var response;
 		// Use the promise or response callback in BrowserExt for advanced functionality
 		if(Zotero.isBrowserExt) {
 			// Get current tab if not provided
 			if (!tab) {
 				tab = (await browser.tabs.query({active: true, lastFocusedWindow: true}))[0]
+			}
+			if (typeof tab === 'number') {
+				tab = await browser.tabs.get(tab);
 			}
 			let options = {};
 			if (typeof frameId == 'number') options = {frameId};
@@ -149,4 +153,42 @@ Zotero.Messaging = new function() {
 		}
 		Zotero.Messaging.initialized = true;
 	}
+
+	this.receiveChunk = function(id, payload) {
+		_chunkedPayloads[id] = _chunkedPayloads[id] || "";
+		_chunkedPayloads[id] += payload;
+		// Shouldn't need to keep this for longer than 30s
+		setTimeout(() => {
+			delete _chunkedPayloads[id];
+		}, 30000);
+	}
+
+	this.getChunkedPayload = function(id) {
+		const payload = _chunkedPayloads[id];
+		delete _chunkedPayloads[id];
+		return payload;
+	}
+}
+// Used to pass large data like blobs on Chrome
+if (Zotero.isChromium) {
+	// Cannot be added asynchronously
+	self.addEventListener('message', async (e) => {
+		if (!(e.data?.type === "inject-message")) return;
+		let { args } = e.data;
+		// Replace tabId with tab
+		if (args[2]) {
+			args[2] = await browser.tabs.get(args[2]);
+		}
+		let result, error;
+		try {
+			result = await Zotero.Messaging.receiveMessage(...args)
+		} catch (e) {
+			error = JSON.stringify(Object.assign({
+				name: e.name,
+				message: e.message,
+				stack: e.stack
+			}, e));
+		}
+		e.source.postMessage({ result, error });
+	});
 }

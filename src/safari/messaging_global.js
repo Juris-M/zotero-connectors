@@ -26,12 +26,13 @@
 const MESSAGE_TIMEOUT = 5 * 60 * 1000;
 
 Zotero.Messaging._responseListeners = {};
-Zotero.Messaging.receiveSwiftMessage = async function(messageName, id, data=[], tabId=-1) {
-	// Zotero.debug(`Swift message received: ${messageName}, ${JSON.stringify(data).substr(0, 500)}`);
+Zotero.Messaging.receiveSwiftMessage = async function(messageName, id, data, tabId) {
+	// Zotero.debug(`Swift message received: ${messageName}:${id}, ${JSON.stringify(data).substr(0, 500)}`);
 	if (messageName == 'response') {
 		let callback = Zotero.Messaging._responseListeners[id];
 		if (!callback) return;
-		if (data[0] == "error") data[1] = JSON.stringify(data[1]);
+		delete Zotero.Messaging._responseListeners[id];
+		if (data && data[0] == "error") data[1] = JSON.stringify(data[1]);
 		let response = callback(data, Zotero.Connector_Browser.getTab(tabId));
 		// await for the response for error handling
 		if (response && response.then) {
@@ -43,7 +44,7 @@ Zotero.Messaging.receiveSwiftMessage = async function(messageName, id, data=[], 
 	try {
 		var result = await Zotero.Messaging.receiveMessage(messageName, data, Zotero.Connector_Browser.getTab(tabId));
 	} catch (err) {
-		Zotero.logError(err);
+		// Zotero.logError(err);
 		result = ["error", JSON.stringify(Object.assign({
 			name: err.name,
 			message: err.message,
@@ -55,7 +56,7 @@ Zotero.Messaging.receiveSwiftMessage = async function(messageName, id, data=[], 
 
 Zotero.Messaging.sendMessage = async function(messageName, args=[], tab, messageId, deferred) {
 	try {
-		messageId = messageId || Math.floor(Math.random()*1e12);
+		messageId = messageId || `${messageName}_${Math.floor(Math.random()*1e12)}`;
 		deferred = deferred || Zotero.Promise.defer();
 		const tabId = tab ? tab.id : tab;
 		const messageTimeout = Zotero.initialized ? MESSAGE_TIMEOUT : 2000;
@@ -75,6 +76,7 @@ Zotero.Messaging.sendMessage = async function(messageName, args=[], tab, message
 		Zotero.Messaging._responseListeners[messageId] = respond;
 
 		sendMessage(messageName, messageId, args, tabId);
+		// Zotero.debug(`Swift message sent: ${messageName}:${messageId}, ${JSON.stringify(args).substr(0, 500)}`);
 		// Make sure we don't slowly gobble up memory with callbacks
 		// The drawback is that Google Docs users will timeout in MESSAGE_TIMEOUT
 		// (at the time of writing this is 5min)

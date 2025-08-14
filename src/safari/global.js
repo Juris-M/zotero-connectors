@@ -28,6 +28,7 @@ let tabs = {};
 
 // TODO: Garbage collect
 function getTab(tabId) {
+	if (tabId === null) return getTab(-1);
 	if (tabs[tabId]) return tabs[tabId];
 	return tabs[tabId] = {id: tabId};
 }
@@ -118,7 +119,7 @@ Zotero.Connector_Browser = new function() {
 			Zotero.Connector_Browser.saveWithTranslator(tab,
 				tab.translators[0].translatorID, {fallbackOnFailure: true});
 		} else {
-			var withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
+			let withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.prefs.automaticSnapshots :
 				Zotero.Prefs.get('automaticSnapshots');
 			Zotero.Connector_Browser.saveAsWebpage(tab, { snapshot: withSnapshot });
 		}
@@ -309,7 +310,7 @@ Zotero.Connector_Browser = new function() {
 	}
 
 	function _showWebpageIcon() {
-		let withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.automaticSnapshots :
+		let withSnapshot = Zotero.Connector.isOnline ? Zotero.Connector.prefs.automaticSnapshots :
 			Zotero.Prefs.get('automaticSnapshots');
 		let image = Zotero.ItemTypes.getImageSrc("webpage-gray").replace('images/', 'images/toolbar/')
 			.replace(`${safari.extension.baseURI}safari/`, '');

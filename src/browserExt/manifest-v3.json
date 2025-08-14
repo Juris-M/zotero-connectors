@@ -13,7 +13,7 @@
 		"default_title": "Save to Jurism"
 	},
 	"host_permissions": ["http://*/*", "https://*/*"],
-	"permissions": ["tabs", "contextMenus", "cookies", "scripting",
+	"permissions": ["tabs", "contextMenus", "cookies", "scripting", "offscreen",
 		"webRequest", "declarativeNetRequest", "webNavigation", "storage"],
 	"declarative_net_request": {
 		"rule_resources": [{
@@ -51,16 +51,22 @@
 		}
 	],
 	"sandbox": {
-		"pages": ["translateSandbox/translateSandbox.html"]
+		"pages": ["offscreen/offscreenSandbox.html"]
 	},
 	"web_accessible_resources": [{
 		"resources": [
 			"images/*",
 			"progressWindow/progressWindow.html",
 			"modalPrompt/modalPrompt.html",
-			"translateSandbox/translateSandbox.html",
+			"confirm/confirm.html",
 			"test/data/journalArticle-single.html",
-			"lib/SingleFile/single-file-hooks-frames.js"
+			"browserAttachmentMonitor/browserAttachmentMonitor.html",
+			"chromeMessageIframe/messageIframe.html",
+			"lib/SingleFile/single-file-hooks-frames.js",
+			"inject/pageSaving.js",
+			"zoteroFrame.js",
+			"translateWeb.js",
+			"itemSaver.js"
 		],
 		"matches": ["http://*/*", "https://*/*"]
 	}],
@@ -79,7 +85,7 @@
 		"open_in_tab": true
 	},
 	"commands": {
-		"_execute_browser_action": {
+		"_execute_action": {
 			"suggested_key": {
 				"default": "Ctrl+Shift+S"
 			}

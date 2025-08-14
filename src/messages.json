@@ -26,8 +26,26 @@
 	"general_warning": {
 		"message": "Warning"
 	},
+	"general_continue": {
+		"message": "Continue"
+	},
+	"general_continueAnyway": {
+		"message": "Continue Anyway"
+	},
+	"general_dontWarnAgain": {
+		"message": "Don't Warn Again"
+	},
+	"general_ok": {
+		"message": "OK"
+	},
 	"general_cancel": {
 		"message": "Cancel"
+	},
+	"general_selectAll": {
+		"message": "Select All"
+	},
+	"general_deselectAll": {
+		"message": "Deselect All"
 	},
 	"general_pleaseWait": {
 		"message": "Please wait…"
@@ -36,11 +54,75 @@
 		"message": "Copy to Clipboard"
 	},
 	
+	"itemType_pdf": {
+		"message": "PDF attachment"
+	},
+	"itemType_epub": {
+		"message": "EPUB attachment"
+	},
+	"itemType_snapshot": {
+		"message": "Snapshot"
+	},
+	"itemType_note": {
+		"message": "Note"
+	},
+	"itemType_link": {
+		"message": "Web link"
+	},
+	"itemType_attachment": {
+		"message": "Attachment"
+	},
+	
 	"progressWindow_savingTo": {
 		"message": "Saving to"
 	},
+	"progressWindow_detailsBtnView": {
+		"message": "View details"
+	},
+	"progressWindow_detailsBtnHide": {
+		"message": "Hide details"
+	},
+	"progressWindow_collectionSelector": {
+		"message": "Target collection selector"
+	},
+	"progressWindow_savingItems": {
+		"message": "Saving $1 items. $2"
+	},
+	"progressWindow_savingItem": {
+		"message": "Saving item $1"
+	},
+	"progressWindow_saveItem": {
+		"message": "Item $1: $2"
+	},
+	"progressWindow_downloadComplete": {
+		"message": "Saved $1"
+	},
+	"progressWindow_downloadCompletePlural": {
+		"message": "Saved $1 for item $2"
+	},
+	"progressWindow_downloadFailed": {
+		"message": "Failed download of $1"
+	},
+	"progressWindow_downloadFailedPlural": {
+		"message": "Failed download of $1 for item $2"
+	},
+	"progressWindow_allDone": {
+		"message": "Saving is complete. The dialog will close now."
+	},
+	"progressWindow_alreadySaved": {
+		"message": "Items from this webpage have already been saved."
+	},
 	"progressWindow_tagPlaceholder": {
-		"message": "Tags (separated by commas)"
+		"message": "Tags"
+	},
+	"progressWindow_removeTag": {
+		"message": "Click to remove tag"
+	},
+	"progressWindow_filterPlaceholder": {
+		"message": "Filter Collections"
+	},
+	"progressWindow_noteEditorPlaceholder": {
+		"message": "Add a note"
 	},
 	"progressWindow_error_translation": {
 		"message": "An error occurred while saving this item. See $1 for more information."
@@ -66,12 +148,26 @@
 	"progressWindow_error_upgradeClient_latestVersion": {
 		"message": "latest version"
 	},
+	"progressWindow_OA_searching": {
+		"message": "Searching for open-access version…"
+	},
+	
+	
+	"itemSelector_title": {
+		"message": "Select which items you’d like to add to your library:"
+	},
+	"itemSelector_pattern": {
+		"message": "Pattern"
+	},
 	
 	"extensionIsDisabled": {
-		"message": "$1 is disabled"
+		"message": "$1 Connector is not available on this page"
+	},
+	"extensionIsDisabled_fileURL": {
+		"message": "$1 Connector is not available on file URLs"
 	},
 	"extensionIsDisabled_extensionPage": {
-		"message": "$1 is disabled on extension pages"
+		"message": "$1 Connector is not available on extension pages"
 	},
 	
 	"appConnector": {
@@ -88,7 +184,7 @@
 		"message": "The $1 Connector enables you to <a href=\"$2\">save items to $1</a> from your browser in a single click."
 	},
 	"firstRun_text2": {
-		"message": "If you haven’t yet, <a href=\"$2\">download</a> the standalone $1 application for the best experience."
+		"message": "If you haven’t yet, <a href=\"$2\">download</a> the $1 application for the best experience."
 	},
 	"firstRun_text3": {
 		"message": "(You can view the $1 Privacy Policy on <a href=\"$2\">the project website</a>)."
@@ -154,8 +250,17 @@
 	"integration_googleDocs_documentLocked_moreInfo": {
 		"message": "$1 locks your document to prevent multiple users from editing citations at the same time. Concurrent citation editing in the document may lead to citation or document corruption. Certain unforeseeable circumstances, such as network failures, may lead to your document becoming permanently locked. If you believe this has happened, you can override the lock.<br/><br/>Would you like to override the document lock?"
 	},
+	"integration_googleDocs_authScopeError": {
+		"message": "$1 needs permission to edit your Google Docs documents in order to insert citations. Please try again, and be sure to allow $1 to see, edit, create, and delete your Google Docs documents."
+	},
 	"integration_googleDocs_documentPermissionError": {
 		"message": "The Google account you selected does not have permission to edit this document. Please try again, and be sure to choose the account with editing access."
+	},
+	"integration_googleDocs_disabledTooltip": {
+		"message": "Citing with $1 is disabled in Suggesting mode. Switch to Editing mode to enable citing."
+	},
+	"integration_googleDocs_largeDoc": {
+		"message": "Your document is over $1 pages long. Citing with $2 in large Google Docs documents is not recommended due to performance issues and difficulty in troubleshooting citation problems. Consider moving your document to LibreOffice or Microsoft Word.<br/><br/>See <a href=\"https://www.zotero.org/support/kb/moving_documents_between_word_processors\">Moving Documents Between Word Processors</a> for more information."
 	},
 	
 	"integration_googleDocs_orphanedCitations_buttonTooltip": {
@@ -182,5 +287,15 @@
 	},
 	"reloadVia": {
 		"message": "Reload via $1"
+	},
+	
+	"permissions_siteAccess_title": {
+		"message": "Site Access Permissions Required"
+	},
+	"permissions_siteAccess_openPreferences": {
+		"message": "Open Extension Preferences"
+	},
+	"permissions_siteAccess_message": {
+		"message": "<p>Zotero Connector requires permission to run on all websites to function properly.</p><p>To enable this, change the \"Site Access\" setting to \"On all sites\" in the Extension Preferences page.</p>"
 	}
 }

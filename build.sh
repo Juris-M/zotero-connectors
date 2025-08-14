@@ -45,12 +45,6 @@ DONE
 	exit 1
 }
 
-if [ $IS_CYGWIN -gt 0 ]; then
-	GULP="$CYGWIN_CWD/node_modules/gulp/bin/gulp.js"
-else
-	GULP="$CWD/node_modules/gulp/bin/gulp.js"
-fi
-
 BUILD_BROWSER_EXT=0
 BUILD_SAFARI=0
 while getopts "hp:v:d" opt; do
@@ -149,11 +143,12 @@ fi
 rm -f "$LOG"
 
 # Remove old build directories
+# TODO: Remove 'chrome' line
 rm -rf "$BUILD_DIR/browserExt" \
 	"$BUILD_DIR/chrome" \
+	"$BUILD_DIR/manifestv3" \
 	"$BUILD_DIR/firefox" \
 	"$BUILD_DIR/safari" \
-	"$BUILD_DIR/manifestv3" \
 	"$BUILD_DIR/bookmarklet"
 
 # Make directories if they don't exist
@@ -175,6 +170,8 @@ function copyResources {
 		browser_builddir="$BUILD_DIR/$browser"
 	fi
 	browser_srcdir="$SRCDIR/$browser"
+	
+	cp COPYING "$browser_builddir/"
 	
 	# Copy common files
 	rsync -r --exclude '.*' "$SRCDIR/common/" "$browser_builddir/"
@@ -238,6 +235,7 @@ function copyResources {
 	cp "$NODE_MODULES_DIR/react/umd/react.production.min.js" "$browser_builddir/lib/react.js"
 	cp "$NODE_MODULES_DIR/react-dom/umd/react-dom.production.min.js" "$browser_builddir/lib/react-dom.js"
 	cp "$NODE_MODULES_DIR/prop-types/prop-types.min.js" "$browser_builddir/lib/prop-types.js"
+	cp "$NODE_MODULES_DIR/dompurify/dist/purify.min.js" "$browser_builddir/lib/dompurify.js"
 	cp "$NODE_MODULES_DIR/react-dom-factories/index.js" "$browser_builddir/lib/react-dom-factories.js"
 	
 	# Remove .jsx files - we'll deal with those in gulp
@@ -247,20 +245,21 @@ function copyResources {
 	find "$browser_builddir" -type f -name ".git*" -delete
 	rm -rf "$browser_builddir/utilities/.github"
 	rm -rf "$browser_builddir/utilities/test"
+	for i in 'package.json' 'package-lock.json' 'COPYING' 'README.md' 'resource/README.md' 'resource/schema/'; do
+		rm -r "$browser_builddir/utilities/$i"
+	done
 	
 	# Copy SingleFile submodule code
 	mkdir -p "$browser_builddir/lib/SingleFile/lib"
-	cp -r "$SRCDIR/zotero/resource/SingleFile/lib/single-file-bootstrap.js" \
-	  "$SRCDIR/zotero/resource/SingleFile/lib/single-file-hooks-frames.js" \
-	  "$SRCDIR/zotero/resource/SingleFile/lib/single-file.js" \
+	cp -r "$LIBDIR/SingleFile-Lite/lib/single-file-bootstrap.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/single-file-hooks-frames.js" \
+	  "$LIBDIR/SingleFile-Lite/lib/single-file.js" \
 		"$browser_builddir/lib/SingleFile"
 	# Copy SingleFile config object from client code
 	cp "$SRCDIR/zotero/chrome/content/zotero/xpcom/singlefile.js" "$browser_builddir/singlefile-config.js"
 	
 	if [ ! -z $DEBUG ]; then
-		cp "$EXTENSION_TRANSLATE_DIR/testTranslators"/*.js \
-			"$EXTENSION_TRANSLATE_DIR/testTranslators"/*.css \
-			"$browser_builddir/tools/testTranslators"
+		cp "$EXTENSION_TRANSLATE_DIR/testTranslators/"*.mjs "$browser_builddir/tools/testTranslators"
 	else
 		rm -rf "$browser_builddir/tools"
 	fi
@@ -309,28 +308,25 @@ if [[ $BUILD_SAFARI == 1 ]]; then
 	copyResources 'safari'
 fi
 
-# Make separate Chrome, Chrome Manifest v3 and Firefox directories
+# Make separate Manifest v3 and Firefox directories
 if [[ $BUILD_BROWSER_EXT == 1 ]]; then
-	rsync -a $BUILD_DIR/browserExt/ $BUILD_DIR/chrome/
 	rsync -a $BUILD_DIR/browserExt/ $BUILD_DIR/manifestv3/
 	mv $BUILD_DIR/browserExt $BUILD_DIR/firefox
 fi
 
 if [[ $BUILD_BROWSER_EXT == 1 ]] || [[ $BUILD_SAFARI == 1 ]]; then
-	"$GULP" -v >/dev/null 2>&1 || { echo >&2 "gulp not found -- aborting"; exit 1; }
+	npx gulp -v >/dev/null 2>&1 || { echo >&2 "gulp not found -- aborting"; exit 1; }
+
 	# Update scripts
 	if [ ! -z $DEBUG ]; then
-		"$GULP" process-custom-scripts --connector-version "$VERSION" > "$LOG" 2>&1
-		PID=$!
-		wait $PID
+		npx gulp process-custom-scripts --connector-version "$VERSION" > "$LOG" 2>&1
 	else
-		"$GULP" process-custom-scripts --connector-version "$VERSION" -p > "$LOG" 2>&1
+		npx gulp process-custom-scripts --connector-version "$VERSION" -p > "$LOG" 2>&1
 	fi
 fi
 
 if [[ $BUILD_BROWSER_EXT == 1 ]]; then
 	# Remove MV3 manifest file
-	rm "$BUILD_DIR/chrome/manifest-v3.json"
 	rm "$BUILD_DIR/manifestv3/manifest-v3.json"
 	rm "$BUILD_DIR/firefox/manifest-v3.json"
 	
@@ -338,39 +334,19 @@ if [[ $BUILD_BROWSER_EXT == 1 ]]; then
 	
 	# Use larger icons where available in Chrome, which actually wants 19px icons
 	# 2x
-	for img in "$BUILD_DIR"/chrome/images/*2x.png; do
+	for img in "$BUILD_DIR"/manifestv3/images/*2x.png; do
 		cp $img `echo $img | sed 's/@2x//'`
 	done
 	## 2.5x
-	for img in "$BUILD_DIR"/chrome/images/*48px.png; do
+	for img in "$BUILD_DIR"/manifestv3/images/*48px.png; do
 		cp $img `echo $img | sed 's/@48px//'`
 	done
 	
 	# Remove the 'applications' property used by Firefox from the manifest
-	pushd $BUILD_DIR/chrome > /dev/null
+	pushd $BUILD_DIR/manifestv3 > /dev/null
 	cat manifest.json | jq '. |= del(.applications)' > manifest.json-tmp
 	mv manifest.json-tmp manifest.json
 	popd > /dev/null
-	
-	# Remove cruft from the version string that would make Chrome barf.
-	## pushd $BUILD_DIR/chrome > /dev/null
-	## cat manifest.json | jq '.version |= sub("beta.*"; "")' > manifest.json-tmp
-	## mv manifest.json-tmp manifest.json
-	## popd > /dev/null
-
-	# Chrome Manifest V3 modifications
-	rsync -a $BUILD_DIR/chrome/images/ $BUILD_DIR/manifestv3/images/
-	
-	# Replace SingleFile code for MV3 with SingleFile-Lite
-	rm -rf "$BUILD_DIR/manifestv3/lib/SingleFile"
-	mkdir -p "$BUILD_DIR/manifestv3/lib/SingleFile"
-	cp -r "$LIBDIR/SingleFile-Lite/lib/single-file-extension-core.js" \
-	  "$LIBDIR/SingleFile-Lite/lib/single-file-background.js" \
-	  "$LIBDIR/SingleFile-Lite/lib/single-file.js" \
-	  "$LIBDIR/SingleFile-Lite/lib/single-file-frames.js" \
-	  "$LIBDIR/SingleFile-Lite/lib/chrome-browser-polyfill.js" \
-	  "$LIBDIR/SingleFile-Lite/lib/single-file-hooks-frames.js" \
-		"$BUILD_DIR/manifestv3/lib/SingleFile"
 	
 	# Firefox modifications
 	
@@ -388,7 +364,6 @@ fi
 # TODO: Would be better to skip these in gulpfile.js for non-debug builds and remove them in
 # copyResources instead
 if [ -z $DEBUG ]; then
-	rm -rf "$BUILD_DIR/chrome/test"
 	rm -rf "$BUILD_DIR/manifestv3/test"
 	rm -rf "$BUILD_DIR/firefox/test"
 fi

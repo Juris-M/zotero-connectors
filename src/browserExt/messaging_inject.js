@@ -23,6 +23,8 @@
     ***** END LICENSE BLOCK *****
 */
 
+let ZoteroFrame;
+
 /**
  * @namespace
  * See messages.js for an overview of the message handling process.
@@ -70,6 +72,12 @@ Zotero.Messaging = new function() {
 						}
 						if (messageConfig.inject && messageConfig.inject.preSend) {
 							newArgs = await messageConfig.inject.preSend(newArgs);
+						}
+
+						// MV3 Chromium messaging has a limit of 64MB payload, so we 
+						// use an alternative method
+						if (Zotero.isChromium && messageConfig.largePayload) {
+							return Zotero.Messaging._sendViaIframeServiceWorkerPort(messageName, newArgs);
 						}
 						
 						// send message
@@ -132,5 +140,39 @@ Zotero.Messaging = new function() {
 			})();
 			return true;
 		});
+	}
+
+	/**
+	 * Send a message to the background page by creating an iframe which has access to the
+	 * background service worker which allows sending large payloads.
+	 * @param {String} messageName 
+	 * @param {Any[]} args 
+	 * @returns {Promise<Any>}
+	 */
+	this._sendViaIframeServiceWorkerPort = async function(messageName, args) {
+		if (!Zotero.isChromium) {
+			throw new Error("sendViaIframeServiceWorkerPort is only supported on Chromium");
+		}
+		if (!ZoteroFrame) {
+			ZoteroFrame = (await import(Zotero.getExtensionURL("zoteroFrame.js"))).default;
+		}
+		const frame = new ZoteroFrame({
+			src: Zotero.getExtensionURL("chromeMessageIframe/messageIframe.html"),
+		}, { display: "none" }, {});
+		await frame.init();
+		let response = await frame.sendMessage('sendToBackground', [messageName, args])
+		// frame.remove();
+		return response;
+	}
+
+	this.sendAsChunks = async function(payload) {
+		if (!Zotero.isChromium) throw new Error("Messaging.sendAsChunks is only required on Chromium");
+		const MAX_CHUNK_SIZE = 8 * (1024 * 1024);
+		const id = Zotero.Utilities.randomString()
+		const numChunks = Math.ceil(payload.length / MAX_CHUNK_SIZE);
+		for (let i = 0; i < numChunks; i++) {
+			await Zotero.Messaging.receiveChunk(id, payload.slice(i * MAX_CHUNK_SIZE, (i + 1) * MAX_CHUNK_SIZE));
+		}
+		return id;
 	}
 }

@@ -30,7 +30,14 @@ Zotero.Errors = new function() {
 		if (Zotero.isManifestV3) {
 			let storedData = await browser.storage.session.get({'loggedErrors': []});
 			_output = storedData.loggedErrors.concat(_output);
+			if (!_output.length) {
+				_output.push('Info: Service worker starts: ');
+			}
 		}
+	}
+	
+	this.logServiceWorkerStarts = function(time) {
+		_output[0] = _output[0] += ` ${time}`
 	}
 	
 	/**
@@ -40,7 +47,9 @@ Zotero.Errors = new function() {
 	 * @param {Number} line Line where error occurred
 	 */
 	this.log = function(string, url, line) {
-		var err = ['[JavaScript Error: "', string, '"'];
+		// Special case for MV3 service worker restart info logging
+		var err;
+		err = [`[JavaScript Error: "${string}"`];
 		if(url || line) {
 			var info = [];
 			if(url) info.push('file: "'+url+'"');
@@ -61,6 +70,49 @@ Zotero.Errors = new function() {
 	this.getErrors = async function() {
 		return _output.slice();
 	}
+
+	/**
+	 * Get versions, platform, etc.
+	 */
+	this.getSystemInfo = async function () {
+		var info;
+		if (Zotero.isSafari && Zotero.isBackground) {
+			info = {
+				connector: "true",
+				version: Zotero.version,
+				platform: "Safari App Extension",
+			};
+		} else {
+			info = {
+				connector: "true",
+				version: Zotero.version,
+				platform: navigator.platform,
+				locale: navigator.language,
+				userAgent: navigator.userAgent,
+				isManifestV3: Zotero.isManifestV3
+			};
+		}
+		
+		info.appName = Zotero.appName;
+		info.zoteroAvailable = !!(await Zotero.Connector.checkIsOnline());
+		
+		
+		if (Zotero.isBackground && Zotero.isBrowserExt) {
+			let granted = await browser.permissions.contains({permissions: ['management']});
+			if (granted) {
+				// See https://github.com/zotero/zotero-connectors/issues/476
+				if (!Zotero.isChromium || chrome.management.getAll) {
+					let extensions = await browser.management.getAll();
+					info.extensions = extensions
+						.filter(extension => extension.enabled && extension.name != Zotero.appName)
+						.map(extension => {
+							return `${extension.name}: ${extension.version}, ${extension.type}`;
+						}).join(', ')
+				}
+			}
+		}
+		return JSON.stringify(info, null, 2);
+	}
 	
 	/**
 	 * Sends an error report to the server
@@ -69,7 +121,7 @@ Zotero.Errors = new function() {
 	 * in the global page
 	 */
 	this.sendErrorReport = async function() {
-		var info = await Zotero.getSystemInfo();
+		var info = await this.getSystemInfo();
 		var parts = {
 			error: "true",
 			errorData: (await this.getErrors()).join('\n'),

@@ -12,8 +12,11 @@
 		},
 		"default_title": "Save to Juris-M"
 	},
-	"permissions": ["http://*/*", "https://*/*", "tabs", "contextMenus", "cookies", 
-		"webRequest", "webRequestBlocking", "webNavigation", "storage"],
+	"permissions": [
+		"http://*/*", "https://*/*",
+		"tabs", "contextMenus", "cookies", "storage", "scripting",
+		"webRequest", "webRequestBlocking", "webNavigation", "declarativeNetRequest"
+	],
 	"optional_permissions": ["management", "clipboardWrite"],
 	"background": {
 		"scripts": [
@@ -49,8 +52,12 @@
 		"images/*",
 		"progressWindow/progressWindow.html",
 		"modalPrompt/modalPrompt.html",
+		"browserAttachmentMonitor/browserAttachmentMonitor.html",
 		"test/data/journalArticle-single.html",
-		"lib/SingleFile/single-file-hooks-frames.js"
+		"lib/SingleFile/single-file-hooks-frames.js",
+		"inject/pageSaving.js",
+		"translateWeb.js",
+		"itemSaver.js"
 	],
 	"content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
 	"homepage_url": "https://www.zotero.org/",
@@ -76,7 +83,7 @@
 		"gecko": {
 			"id": "jurism@juris-m.github.io",
 			"update_url": "https://jurism.xyz/AUTOFILLED",
-			"strict_min_version": "51.0"
+			"strict_min_version": "58.0"
 		}
 	}
 }

@@ -25,29 +25,34 @@
 
 // TODO: refactor this class
 Zotero.Connector = new function() {
-	const CONNECTOR_API_VERSION = 2;
+	const CONNECTOR_API_VERSION = 3;
 	
 	var _ieStandaloneIframeTarget, _ieConnectorCallbacks;
 	this.isOnline = (Zotero.isSafari || Zotero.isFirefox) ? false : null;
-	this.shouldReportActiveURL = true;
 	this.clientVersion = '';
+	this.prefs = {
+		reportActiveURL: true
+	};
 	
 	/**
 	 * Checks if Zotero is online and passes current status to callback
-	 * @param {Function} callback
 	 */
 	this.checkIsOnline = async function() {
-		return this.ping({}).catch(function(e) {
+		try {
+			await this.ping({});
+			return true;
+		} catch (e) {
 			if (e.status != 0) {
 				Zotero.debug("Checking if Zotero is online returned a non-zero HTTP status.");
 				Zotero.logError(e);
+				return true;
 			}
 			return false;
-		});
+		}
 	};
 
 	this.reportActiveURL = function(url) {
-		if (!this.isOnline || !this.shouldReportActiveURL) return;
+		if (!this.isOnline || !this.prefs.reportActiveURL) return;
 		
 		let payload = { activeURL: url };
 		this.ping(payload);
@@ -55,18 +60,56 @@ Zotero.Connector = new function() {
 	
 	// For use in injected pages
 	this.getPref = function(pref) {
-		return Zotero.Connector[pref];
+		return Zotero.Connector.prefs[pref];
 	}
 	
-	this.ping = function(payload={}) {
-		return Zotero.Connector.callMethod("ping", payload).then(function(response) {
-			if (response && 'prefs' in response) {
-				Zotero.Connector.shouldReportActiveURL = !!response.prefs.reportActiveURL;
-				Zotero.Connector.automaticSnapshots = !!response.prefs.automaticSnapshots;
-				Zotero.Connector.googleDocsAddNoteEnabled = !!response.prefs.googleDocsAddNoteEnabled;
-			}
-			return response || {};
-		});
+	/**
+	 * Process preferences from ping response
+	 * @param {Object} prefs - Preferences object from server response
+	 */
+	this._processPreferences = function(prefs) {
+		// Populate preference container and legacy top-level fields
+		const PREF_KEYS = [
+			'downloadAssociatedFiles',
+			'reportActiveURL',
+			'automaticSnapshots',
+			'googleDocsAddAnnotationEnabled',
+			'googleDocsCitationExplorerEnabled',
+			'supportsAttachmentUpload',
+			'supportsTagsAutocomplete',
+			'canUserAddNote'
+		];
+		for (const key of PREF_KEYS) {
+			const val = !!prefs[key];
+			Zotero.Connector.prefs[key] = val;
+		}
+	}
+	
+	/**
+	 * Process translator hash from ping response and update if needed
+	 * @param {Object} prefs - Preferences object from server response
+	 */
+	this._processTranslatorHash = function(prefs) {
+		if (prefs.translatorsHash) {
+			(async () => {
+				let sorted = !!prefs.sortedTranslatorHash;
+				let remoteHash = sorted ? prefs.sortedTranslatorHash : prefs.translatorsHash;
+				let translatorsHash = await Zotero.Translators.getTranslatorsHash(sorted);
+				if (remoteHash != translatorsHash) {
+					Zotero.debug("Zotero Ping: Translator hash mismatch detected. Updating translators from Zotero")
+					return Zotero.Translators.updateFromRemote();
+				}
+			})()
+		}
+	}
+	
+	this.ping = async function(payload={}) {
+		let response = await Zotero.Connector.callMethod("ping", payload);
+		if (response && 'prefs' in response) {
+			this._processPreferences(response.prefs);
+			this._processTranslatorHash(response.prefs);
+		}
+		return response || {};
 	}
 	
 	this.getClientVersion = async function() {
@@ -86,7 +129,7 @@ Zotero.Connector = new function() {
 	 * @param {Object} data - RPC data to POST. If null or undefined, a GET request is sent.
 	 * @param {Function} callback - Function to be called when requests complete.
 	 */
-	this.callMethod = async function(options, data, tab) {
+	this.callMethod = async function(options, data = null, tab = null) {
 		if (typeof options == 'string') {
 			options = {method: options};
 		}
@@ -98,52 +141,6 @@ Zotero.Connector = new function() {
 			}, options.headers || {});
 		var timeout = "timeout" in options ? options.timeout : 15000;
 		var queryString = options.queryString ? ("?" + options.queryString) : "";
-		
-		var deferred = Zotero.Promise.defer();
-		var newCallback = function(req) {
-			try {
-				var isOnline = req.status !== 0 && req.status !== 403 && req.status !== 412;
-				
-				if (req.status != 0) {
-					Zotero.Connector.clientVersion = req.getResponseHeader('X-Zotero-Version');
-					if (Zotero.Connector.isOnline !== isOnline) {
-						Zotero.Connector.isOnline = isOnline;
-						if (Zotero.Connector_Browser && Zotero.Connector_Browser.onStateChange) {
-							Zotero.Connector_Browser.onStateChange(isOnline && Zotero.Connector.clientVersion);
-						}
-					}
-				}
-				var val = null;
-				if(req.responseText) {
-					let contentType = req.getResponseHeader("Content-Type") || ""
-					if (contentType.includes("application/json")) {
-						val = JSON.parse(req.responseText);
-					} else {
-						val = req.responseText;
-					}
-				}
-				if(req.status == 0 || req.status >= 400) {
-					// Check for incompatible version
-					if(req.status === 412) {
-						if(Zotero.Connector_Browser && Zotero.Connector_Browser.onIncompatibleStandaloneVersion) {
-							var standaloneVersion = req.getResponseHeader("X-Zotero-Version");
-							Zotero.Connector_Browser.onIncompatibleStandaloneVersion(Zotero.version, standaloneVersion);
-							deferred.reject("Connector: Version mismatch: Connector version "+Zotero.version
-								+", Standalone version "+(standaloneVersion ? standaloneVersion : "<unknown>", val));
-						}
-					}
-					
-					Zotero.debug("Connector: Method "+method+" failed with status "+req.status);
-					deferred.reject(new Zotero.Connector.CommunicationError(`Method ${method} failed`, req.status, val));
-				} else {
-					Zotero.debug("Connector: Method "+method+" succeeded");
-					deferred.resolve(val);
-				}
-			} catch(e) {
-				Zotero.logError(e);
-				deferred.reject(new Zotero.Connector.CommunicationError(e.message, 0));
-			}
-		};
 		
 		var uri = Zotero.Prefs.get('connector.url') + "connector/" + method + queryString;
 		if (headers["Content-Type"] == 'application/json') {
@@ -163,24 +160,61 @@ Zotero.Connector = new function() {
 			}
 			data = formData;
 		}
-		options = {body: data, headers, successCodes: false, timeout};
-		let httpMethod = data == null || data == undefined ? "GET" : "POST";
-		Zotero.HTTP.request(httpMethod, uri, options)
-		.then(newCallback)
-		// Unexpected error, including a timeout
-		.catch(function (e) {
-			// Don't log status 0 (Zotero offline) report, it's chatty and needless
-			if (e instanceof Zotero.HTTP.StatusError && e.status === 0) {
-				Zotero.debug(e);
+		options = { body: data, headers, successCodes: false, timeout };
+		let httpMethod = data === null ? "GET" : "POST";
+		try {
+			const xhr = await Zotero.HTTP.request(httpMethod, uri, options);
+			Zotero.Connector.clientVersion = xhr.getResponseHeader('X-Zotero-Version');
+			if (Zotero.Connector.isOnline !== true) {
+				Zotero.Connector.isOnline = true;
+				if (Zotero.Connector_Browser?.onStateChange) {
+					Zotero.Connector_Browser.onStateChange(Zotero.Connector.clientVersion);
+				}
 			}
-			else {
+			var val = xhr.response
+			if (xhr.responseText) {
+				let contentType = xhr.getResponseHeader("Content-Type") || ""
+				if (contentType.includes("application/json")) {
+					val = JSON.parse(xhr.responseText);
+				} else {
+					val = xhr.responseText;
+				}
+			}
+			if (xhr.status === 0) {
+				if (Zotero.Connector.isOnline !== false) {
+					Zotero.Connector.isOnline = false;
+					if (Zotero.Connector_Browser?.onStateChange) {
+						Zotero.Connector_Browser.onStateChange(false);
+					}
+				}
+				throw new Zotero.Connector.CommunicationError('Connector: Zotero is offline');
+			}
+			else if (xhr.status >= 400) {
+				// Check for incompatible version
+				if (xhr.status === 412) {
+					if (Zotero.Connector_Browser && Zotero.Connector_Browser.onIncompatibleStandaloneVersion) {
+						var standaloneVersion = xhr.getResponseHeader("X-Zotero-Version");
+						Zotero.Connector_Browser.onIncompatibleStandaloneVersion(Zotero.version, standaloneVersion);
+						throw new Zotero.Connector.CommunicationError(`Connector: Version mismatch: Connector version ${Zotero.version}, Standalone version ${standaloneVersion ? standaloneVersion : "<unknown>"}`, xhr.status, val);
+					}
+				}
+				
+				Zotero.debug("Connector: Method "+method+" failed with status "+xhr.status);
+				throw new Zotero.Connector.CommunicationError(`Method ${method} failed`, xhr.status, val);
+			} else {
+				Zotero.debug("Connector: Method "+method+" succeeded");
+				return val;
+			}
+		} catch (e) {
+			if (!(e instanceof Zotero.Connector.CommunicationError) && !(e instanceof Zotero.HTTP.StatusError)){
+				// Unexpected error, including a timeout
 				Zotero.logError(e);
 			}
-			deferred.reject(e);
-		});
-		let result = await deferred.promise;
-		this._handleIntegrationTabClosed(method, tab);
-		return result;
+			throw e;
+		}
+		finally {
+			this._handleIntegrationTabClosed(method, tab);
+		}
 	},
 	
 	/**
@@ -190,10 +224,11 @@ Zotero.Connector = new function() {
 	 * @param {String|Object} options. See documentation above
 	 * @param	{Object} data RPC data. See documentation above.
 	 */
-	this.callMethodWithCookies = function(options, data, tab) {
+	this.callMethodWithCookies = async function(options, data, tab) {
 		if (Zotero.isBrowserExt) {
 			let cookieParams = {
-				url: tab.url
+				url: tab.url,
+				partitionKey: {} // fetch cookies from partitioned and unpartitioned storage
 			};
 			// When first-party isolation is enabled in Firefox, browser.cookies.getAll()
 			// will fail if firstPartyDomain isn't provided, causing all saves to fail. According
@@ -214,30 +249,45 @@ Zotero.Connector = new function() {
 			if (Zotero.isFirefox && Zotero.browserMajorVersion >= 59) {
 				cookieParams.firstPartyDomain = null;
 			}
-			return browser.cookies.getAll(cookieParams)
-			.then(function(cookies) {
-				var cookieHeader = '';
-				for(var i=0, n=cookies.length; i<n; i++) {
-					cookieHeader += '\n' + cookies[i].name + '=' + cookies[i].value
-						+ ';Domain=' + cookies[i].domain
-						+ (cookies[i].path ? ';Path=' + cookies[i].path : '')
-						+ (cookies[i].hostOnly ? ';hostOnly' : '') //not a legit flag, but we have to use it internally
-						+ (cookies[i].secure ? ';secure' : '');
-				}
-				
-				if(cookieHeader) {
-					data.detailedCookies = cookieHeader.substr(1);
-					delete data.cookie;
-				}
-				
-				// Cookie URI needed to set up the cookie sandbox on standalone
-				data.uri = tab.url;
-				
-				return this.callMethod(options, data, tab);
-			}.bind(this));
+			let cookies;
+			try {
+				cookies = await browser.cookies.getAll(cookieParams)
+			} catch {
+				// Unavailable with Chrome 118 and below. Last supported version on Win 7/8 is Chrome 109.
+				Zotero.debug(`Error getting cookies for ${tab.url} with partitionKey.`);
+				delete cookieParams.partitionKey;
+				cookies = await browser.cookies.getAll(cookieParams)
+			}
+			var cookieHeader = '';
+			for(var i=0, n=cookies.length; i<n; i++) {
+				cookieHeader += '\n' + cookies[i].name + '=' + cookies[i].value
+					+ ';Domain=' + cookies[i].domain
+					+ (cookies[i].path ? ';Path=' + cookies[i].path : '')
+					+ (cookies[i].hostOnly ? ';hostOnly' : '') //not a legit flag, but we have to use it internally
+					+ (cookies[i].secure ? ';secure' : '');
+			}
+			
+			if(cookieHeader) {
+				data.detailedCookies = cookieHeader.substr(1);
+				delete data.cookie;
+			}
+			
+			// Cookie URI needed to set up the cookie sandbox on standalone
+			data.uri = tab.url;
+			
+			return this.callMethod(options, data, tab);
+
 		}
 		
 		return this.callMethod(options, data, tab);
+	}
+
+	/**
+	 * Just calls callMethod, but we need a separate method for content script messaging
+	 * marked as largePayload in messages.js to use Messaging._sendViaIframeServiceWorkerPort()
+	 */
+	this.saveSingleFile = async function(options, data) {
+		return this.callMethod(options, data);
 	}
 
 	/**
@@ -315,7 +365,7 @@ Zotero.Connector_Debug = new function() {
 	 */
 	this.submitReport = async function() {
 		let body = await Zotero.Debug.get();
-		let sysInfo = JSON.parse(await Zotero.getSystemInfo());
+		let sysInfo = JSON.parse(await Zotero.Errors.getSystemInfo());
 		let errors = (await Zotero.Errors.getErrors()).join('\n');
 		sysInfo.timestamp = new Date().toString();
 		body = `${errors}\n\n${JSON.stringify(sysInfo, null, 2)}\n\n${body}`;

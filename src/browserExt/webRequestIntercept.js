@@ -50,11 +50,24 @@ Zotero.WebRequestIntercept = {
 		browser.webRequest.onHeadersReceived.addListener(Zotero.WebRequestIntercept.handleRequest('headersReceived'), {urls: ['<all_urls>'], types}, extraInfoSpec);
 
 		Zotero.WebRequestIntercept.addListener('beforeSendHeaders', Zotero.WebRequestIntercept.storeRequestHeaders)
+		Zotero.WebRequestIntercept.addListener('headersReceived', Zotero.WebRequestIntercept.offerSavingPDFInFrame)
 	},
 
 	storeRequestHeaders: function(details, meta) {
 		meta.requestHeadersObject = details.requestHeadersObject;
     },
+
+	offerSavingPDFInFrame: function(details) {
+		if (details.frameId === 0) return;
+		if (!details.responseHeadersObject['content-type']) return;
+		const contentType = details.responseHeadersObject['content-type'].split(';')[0];
+		
+		// If no translators are found for the top frame or the first child frame, and some frame
+		// contains a pdf, saving that PDF will be offered.
+		if (contentType == 'application/pdf') {
+			setTimeout(() => Zotero.Connector_Browser.onPDFFrame(details.url, details.frameId, details.tabId));
+		}
+	},
 	
 	removeRequestMeta: function(details) {
 		delete Zotero.WebRequestIntercept.reqIDToReqMeta[details.requestId];
@@ -135,15 +148,53 @@ Zotero.WebRequestIntercept = {
 		}
 	},
 	
-	replaceUserAgent: function(url, userAgent) {
-		function userAgentReplacer(details) {
-			if (details.url === url) {
-				Zotero.debug(`Replacing User-Agent for ${url} to ${userAgent}`);
-				browser.webRequest.onBeforeSendHeaders.removeListener(userAgentReplacer);
-				return {requestHeaders: [{name: 'User-Agent', value: userAgent}]};
+	replaceHeaders: async function(url, headers) {
+		if (!Zotero.isBrowserExt) return;
+		return this.replaceHeadersDNR(url, headers);
+	},
+	
+	replaceHeadersDNR: async function(url, headers) {
+		const requestHeaders = headers.map((headerObj) => {
+			return { header: headerObj.name, value: headerObj.value, operation: 'set' }
+		});
+		const ruleID = Math.floor(Math.random() * 100000);
+		const rules = [{
+			id: ruleID,
+			action: {
+				type: 'modifyHeaders',
+				requestHeaders,
+			},
+			condition: {
+				resourceTypes: ['xmlhttprequest'],
+				initiatorDomains: [new URL(browser.runtime.getURL('')).hostname],
 			}
+		}];
+		// Keep the service worker alive while the rule is active
+		Zotero.Connector_Browser.setKeepServiceWorkerAlive(true);
+		try {
+			await browser.declarativeNetRequest.updateSessionRules({
+				removeRuleIds: rules.map(r => r.id),
+				addRules: rules,
+			});
+			// Automatically clean up the rule after 60 seconds in case the caller does not
+			setTimeout(async () => {
+				try {
+					await Zotero.WebRequestIntercept.removeRuleDNR(ruleID);
+				} catch (e) {
+					Zotero.logError(e);
+				}
+			}, 60000);
+			Zotero.debug(`HTTP: Added a DNR rule to change headers for ${url} to ${JSON.stringify(headers)}`);
 		}
-		browser.webRequest.onBeforeSendHeaders.addListener(userAgentReplacer, {urls: ['<all_urls>'], types: ['xmlhttprequest']}, ['blocking', 'requestHeaders']);
+		catch (e) {
+			Zotero.logError(e);
+		}
+		return ruleID;
+	},
+	
+	removeRuleDNR: async function(ruleId) {
+		Zotero.Connector_Browser.setKeepServiceWorkerAlive(false);
+		return browser.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
 	}
 }
 

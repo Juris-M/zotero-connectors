@@ -57,12 +57,23 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		this.state = this.getInitialState();
 		
 		this.nArcs = 20;
+		this.announceAlerts = false;
+		this.alertTimeout = null;
+		this.done = false;
+		this.canUserAddNote = false;
+		this.supportsTagsAutocomplete = false;
 		
 		this.text = {
 			more: Zotero.getString('general_more'),
 			done: Zotero.getString('general_done'),
-			tagsPlaceholder: Zotero.getString('progressWindow_tagPlaceholder')
+			tagsPlaceholder: Zotero.getString('progressWindow_tagPlaceholder'),
+			filterPlaceholder: Zotero.getString('progressWindow_filterPlaceholder'),
+			addNotePlaceholder: Zotero.getString('progressWindow_noteEditorPlaceholder')
 		};
+		
+		this.expandedRowsCache = {};
+		this.existingTags = {};
+		this.currentLibraryID = null;
 		
 		this.headlineSelectNode = React.createRef();
 		
@@ -80,10 +91,20 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		this.handleKeyDown = this.handleKeyDown.bind(this);
 		this.handleKeyPress = this.handleKeyPress.bind(this);
 		this.onTagsChange = this.onTagsChange.bind(this);
+		this.onNoteChange = this.onNoteChange.bind(this);
+		this.onNoteFocus = this.onNoteFocus.bind(this);
+		this.onNoteBlur = this.onNoteBlur.bind(this);
+		this.onNoteKeyPress = this.onNoteKeyPress.bind(this);
 		this.onTagsKeyPress = this.onTagsKeyPress.bind(this);
 		this.onTagsFocus = this.onTagsFocus.bind(this);
 		this.onTagsBlur = this.onTagsBlur.bind(this);
 		this.handleDone = this.handleDone.bind(this);
+		this.setFilter = this.setFilter.bind(this);
+		this.clearFilter = this.clearFilter.bind(this);
+		this.expandToTarget = this.expandToTarget.bind(this);
+		this.updateSelectedTags = this.updateSelectedTags.bind(this);
+		this.onTagAutocompleteShown = this.onTagAutocompleteShown.bind(this);
+		this.sendUpdate	= this.sendUpdate.bind(this);
 	}
 	
 	getInitialState() {
@@ -92,9 +113,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 			target: null,
 			targets: null,
 			targetSelectorShown: false,
-			tags: "",
 			itemProgress: new Map(),
-			errors: []
+			errors: [],
+			note: "",
+			selectedTags: new Set(),
+			extraHeightForTagAutocomplete: 0
 		};
 	}
 	
@@ -105,6 +128,7 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		this.addMessageListener('progressWindowIframe.shown', this.handleShown.bind(this));
 		this.addMessageListener('progressWindowIframe.hidden', this.handleHidden.bind(this));
 		this.addMessageListener('progressWindowIframe.reset', () => this.setState(this.getInitialState()));
+		this.addMessageListener('progressWindowIframe.willHide', this.handleHiding.bind(this));
 		
 		document.addEventListener('visibilitychange', this.handleVisibilityChange.bind(this));
 		
@@ -112,6 +136,16 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		(new Image()).src = 'disclosure-open.svg';
 		
 		this.sendMessage('registered');
+		
+		document.querySelector("#progress-window").setAttribute("aria-label", Zotero.getString('general_saveTo', 'Zotero'));
+		Zotero.Connector.getPref('canUserAddNote').then(res => {
+			this.canUserAddNote = res;
+		});
+		Zotero.Connector.getPref('supportsTagsAutocomplete').then(res => {
+			this.supportsTagsAutocomplete = res;
+		});
+		// Present scrollbar from briefly appearing when tags are being added
+		document.documentElement.style.scrollbarWidth = 'none';
 	}
 	
 	
@@ -140,11 +174,13 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		
 		// Let the parent window know it has to resize the iframe
 		window.requestAnimationFrame(() => {
-			if (this.lastHeight != this.rootNode.scrollHeight
+			// Height of the content + any extra height needed for the tags autocomplete popup
+			let requiredHeight = this.rootNode.scrollHeight + this.state.extraHeightForTagAutocomplete;
+			if (this.lastHeight != requiredHeight
 					// In Firefox this ends up being 0 when the pane closes
 					&& this.rootNode.scrollHeight != 0) {
 				this.lastHeight = this.rootNode.scrollHeight;
-				this.sendMessage('resized', { height: this.rootNode.scrollHeight });
+				this.sendMessage('resized', { height: requiredHeight });
 			}
 		});
 	}
@@ -153,7 +189,7 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	//
 	// State update
 	//
-	changeHeadline(text, target, targets) {
+	changeHeadline(text, target, targets, tags) {
 		// Target selector mode
 		if (targets) {
 			// On initialization or if collapsed, focus the recents drop-down
@@ -169,13 +205,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 			});
 			
 			// Expand to selected node
-			let parent = getParent(targets, target.id);
-			while (parent) {
-				if (parent.expanded) {
-					break;
-				}
-				parent.expanded = true;
-				parent = getParent(targets, parent.id);
+			this.expandToTarget(targets, target);
+
+			// Record which rows are expanded so they're not collapsed in setFilter()
+			for (let row of targets) {
+				this.expandedRowsCache[row.id] = row.expanded;
 			}
 		}
 		
@@ -189,7 +223,14 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		if (!targets) {
 			state.targetSelectorShown = false;
 		}
-		this.setState(state);
+		let targetName = target?.name || "zotero.org";
+		// Alert that the item is being saved or has already been saved
+		let alert = this.done ? Zotero.getString("progressWindow_alreadySaved") : `${text} ${targetName}`;
+		document.getElementById("messageAlert").textContent = alert; 
+		this.existingTags = tags;
+		this.setState(state, () => {
+			this.setFilter();
+		});
 	}
 	
 	makeReadOnly(target) {
@@ -239,8 +280,15 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 			else if (typeof progress == 'number') {
 				p.percentage = progress;
 			}
+			if (params.itemType) {
+				p.itemType = params.itemType
+			}
 			return newState;
 		});
+		// Do not being announcing alerts until all top level items are loaded
+		if (!this.announceAlerts) {
+			this.announceAlerts = params.itemsLoaded;
+		}
 	}
 	
 	addError() {
@@ -255,6 +303,68 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		});
 	}
 	
+	// For screenreader accessibility, announce alerts as items are saved/downloaded
+	handleAlerts(items) {
+		clearTimeout(this.alertTimeout);
+		let toplevelItems = items.filter(item => !item.parentItem && item.percentage == 100);
+		// Do not announce anything until all top level items are saved
+		if (!this.announceAlerts || toplevelItems.length == 0) return;
+		// Generate the first top level message "Saving X items ..."
+		let shortenTitle = (title) => title.split(/\s+/).slice(0, 5).join(' ');
+		let alertQueue = [];
+		let savingMultipleItems = toplevelItems.length > 1;
+		if (savingMultipleItems) {
+			let topLevelTitles = toplevelItems.map((item, index) => Zotero.getString("progressWindow_saveItem", [index + 1, shortenTitle(item.title)])).join(", ");
+			alertQueue = [{ text: Zotero.getString("progressWindow_savingItems", [this.announceAlerts, topLevelTitles]), id: 'saving_items_count' }];
+		}
+		else {
+			alertQueue = [{ text: Zotero.getString("progressWindow_savingItem", shortenTitle(toplevelItems[0].title)), id: 'saving_items_count' }];
+		}
+		let parentItemIndex = 0;
+		// Generate messages about attachments and notes
+		for (let { parentItem, percentage, id, itemType } of items) {
+			let message;
+			if (parentItem) {
+				// Attachments being downloaded
+				if (percentage === false) {
+					message = Zotero.getString(`progressWindow_downloadFailed${savingMultipleItems ? "Plural" : ""}`, [itemType, parentItemIndex]);
+				}
+				else if (percentage === 100) {
+					message = Zotero.getString(`progressWindow_downloadComplete${savingMultipleItems ? "Plural" : ""}`, [itemType, parentItemIndex]);
+				}
+			}
+			else if (percentage === 100) {
+				// Parent item has been saved
+				parentItemIndex += 1;
+			}
+			if (message) {
+				alertQueue.push({text: message, id: id});
+			}
+		}
+
+		// Debounce the updates mainly for voiceover that tends to interrupt currently
+		// announced phrase when aria-live changes despite it being "polite"
+		let noTimeout = this.alertTimeout === null;
+		this.alertTimeout = setTimeout(() => {
+			let logNode = document.getElementById("messageLog");
+			// Add message that the dialog will close in the end
+			if (this.done) {
+				alertQueue.push({text: Zotero.getString("progressWindow_allDone"), id: "allDone"});
+			}
+			for (let { text, id } of alertQueue) {
+				// Make sure a message is not appended twice
+				if (logNode.querySelector(`div[value="${CSS.escape(text)}"]`)) continue;
+
+				// Insert new log entry
+				let div = document.createElement("div");
+				div.setAttribute("data-id", id);
+				div.setAttribute("value", text);
+				div.textContent = text;
+				logNode.appendChild(div);
+			}
+		}, (noTimeout || this.done) ? 0 : 1000);
+	}
+
 	//
 	// Messaging
 	//
@@ -267,7 +377,13 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	}
 	
 	sendUpdate() {
-		this.sendMessage('updated', { target: this.target, tags: this.tags });
+		let tags = [...this.state.selectedTags];
+		// If Zotero version does not support tags autocomplete, it won't handle tags sent as an array.
+		// Then, send tags in the old format as a string.
+		if (!this.supportsTagsAutocomplete) {
+			tags = tags.join(",");
+		}
+		this.sendMessage('updated', { target: this.target, note: this.state.note, tags });
 	}
 	
 	//
@@ -293,6 +409,10 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	
 	handleMouseMove() {
 		this.sendMessage('mousemove');
+	}
+
+	handleHiding() {
+		this.done = true;
 	}
 	
 	handleVisibilityChange() {
@@ -347,9 +467,11 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		this.onTargetChange(event.target.value);
 	}
 	
-	onDisclosureChange() {
+	onDisclosureChange(e) {
+		let viaKeyPress = e.nativeEvent.clientY == 0 && e.nativeEvent.clientX == 0;
 		var show = !this.state.targetSelectorShown;
-		if (show) {
+		// No refocus on click triggered from keyboard
+		if (show && !viaKeyPress) {
 			this.focusTreeOnUpdate = true;
 		}
 		this.setState({
@@ -365,10 +487,31 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	
 	onTargetChange(id) {
 		var target = this.state.targets.find(row => row.id == id);
-		this.setState({target});
+		// Record the library the current target belongs to - it is used to
+		// pick the right tags for autocompletion
+		let selectedLibrary = null;
+		if (target && target.level !== undefined)  {
+			selectedLibrary = target;
+			while (selectedLibrary && selectedLibrary.level > 0) {
+				selectedLibrary = getParent(this.state.targets, selectedLibrary.id);
+			}
+		}
+		// Clear selected tags if the library changes since another group
+		// may have completely different tags
+		let selectedTags = this.state.selectedTags;
+		if (selectedLibrary && selectedLibrary.id !== this.currentLibraryID) {
+			this.currentLibraryID = selectedLibrary.id;
+			// If the library has no tags (likely because the older version of Zotero)
+			// did not send them over, do not clear the tags
+			if ((this.existingTags[this.currentLibraryID] || []).length) {
+				selectedTags = new Set();
+			}
+		}
+		this.setState({ target, selectedTags }, () => {
+			this.sendUpdate();
+		});
 		this.target = target;
 		this.handleUserInteraction();
-		this.sendUpdate();
 	}
 	
 	handleExpandRows(ids) {
@@ -408,7 +551,38 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		});
 	}
 	
+	/**
+	 * Expand all parent rows of the selected row
+	 */
+	expandToTarget(targets, target) {
+		let parent = getParent(targets, target.id);
+		while (parent) {
+			if (parent.expanded) {
+				break;
+			}
+			parent.expanded = true;
+			parent = getParent(targets, parent.id);
+		}
+	}
 	handleKeyDown(event) {
+		if (event.target.classList.contains("ProgressWindow-filterInput")) {
+			// Escape from a non-empty collections filter just clears it 
+			if (event.key == 'Escape' && event.target.value.length > 0) {
+				this.clearFilter();
+				return;
+			}
+			// Tab from collections filter will select the first passing row
+			// if the currently selected row is filtered out
+			if (event.key == "Tab" && !event.shiftKey) {
+				var target = this.state.targets.find(row => row.id == this.state.target.id);
+				if (!target.passesFilter) {
+					let firstPassingTarget = this.state.targets.find(row => row.passesFilter);
+					if (firstPassingTarget) {
+						this.onTargetChange(firstPassingTarget.id);
+					}
+				}
+			}
+		}
 		if (event.key == 'Escape') {
 			this.handleDone();
 		}
@@ -453,14 +627,38 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 	}
 	
 	onTagsFocus() {
-		this.sendMessage('tagsfocus');
+		this.sendMessage('disableCloseTimer');
 	}
 	
 	onTagsBlur() {
-		this.sendMessage('tagsblur');
+		this.sendMessage('enableCloseTimer');
 		this.sendUpdate();
 	}
 	
+	onNoteChange(event) {
+		let textarea = event.target;
+		this.setState({ note: textarea.value });
+		// auto-expand the textarea as the user types
+		textarea.style.height = 'auto';
+		textarea.style.height = textarea.scrollHeight + 'px';
+	}
+
+	onNoteFocus() {
+		this.sendMessage('disableCloseTimer');;
+	}
+
+	onNoteBlur() {
+		this.sendMessage('enableCloseTimer');
+		this.sendUpdate();
+	}
+
+	onNoteKeyPress(event) {
+		// Allow Enter to add new line. Shift-Enter will close the window
+		if (event.key == 'Enter' && !event.shiftKey) {
+			event.stopPropagation();
+		}
+	}
+
 	handleDone() {
 		//this.headlineSelectNode.current.focus();
 		this.sendMessage('close');
@@ -476,6 +674,8 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 				{this.state.targets
 					? this.renderHeadlineSelect()
 					: (this.state.target ? this.renderHeadlineTarget() : "")}
+				<div id="messageAlert" role="alert" style={{ fontSize: 0 }}/>
+				<div id="messageLog" role="log" aria-relevant="additions" style={{ fontSize: 0 }}/>
 			</div>
 		);
 	}
@@ -499,7 +699,8 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 						className="ProgressWindow-headlineSelect"
 						onFocus={this.handleHeadlineSelectFocus}
 						onChange={this.onHeadlineSelectChange}
-						value={this.state.target.id}>
+						value={this.state.target.id}
+						aria-label={this.state.headlineText || ""}>
 					{rowTargets.map((row) => {
 						var props = {
 							key: row.id,
@@ -512,7 +713,9 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 				<button className={"ProgressWindow-disclosure"
 							+ (this.state.targetSelectorShown ? " is-open" : "")}
 						onClick={this.onDisclosureChange}
-						onKeyPress={this.handleDisclosureKeyPress}/>
+						onKeyPress={this.handleDisclosureKeyPress}
+						aria-expanded={this.state.targetSelectorShown}
+						aria-label={Zotero.getString(`progressWindow_detailsBtn${this.state.targetSelectorShown ? "Hide" : "View"}`)}/>
 			</React.Fragment>
 		);
 	}
@@ -527,33 +730,167 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 			{" " + this.state.target.name + "…"}
 		</React.Fragment>;
 	}
+
+
+	/**
+	 * Clear the value of the collections filter and display all rows
+	 */
+	clearFilter() {
+		let filter = document.querySelector('.ProgressWindow-filterInput');
+		if (!filter) {
+			return;
+		}
+		filter.value = "";
+		this.setFilter();
+		filter.focus();
+	}
 	
+	setFilter() {
+		let rows = this.state.targets;
+		if (!rows) return;
+
+		let filter = document.querySelector('.ProgressWindow-filterInput')?.value || "";
+		let crossIcon = document.querySelector(".ProgressWindow-cross");
+		filter = filter.toLowerCase();
+		let isFilterEmpty = filter.length == 0;
+		// Show the cross icon only when the filter is non-empty
+		if (crossIcon) {
+			if (isFilterEmpty) {
+				crossIcon.classList.add("hidden");
+			}
+			else {
+				crossIcon.classList.remove("hidden");
+			}
+		}
+		let passingIDs = {};
+		let passingParentIDs = {};
+		if (!isFilterEmpty && Object.keys(this.expandedRowsCache).length == 0) {
+			// Just started filtering - remember which rows were expanded
+			for (let row of rows) {
+				this.expandedRowsCache[row.id] = row.expanded;
+			}
+		}
+		// Go through the rows from the bottom to the top
+		for (let i = rows.length - 1; i >= 0; i--) {
+			let row = rows[i];
+			let isPassing = row.name.toLowerCase().includes(filter);
+			// If a row passes the filter, record it
+			if (isFilterEmpty || isPassing || passingParentIDs[row.id]) {
+				if (isPassing) {
+					passingIDs[row.id] = true;
+				}
+				// Find the row's immediate parent and mark it as a parent of a passing item
+				let maybeParenIndex = i - 1;
+				while (maybeParenIndex >= 0 && rows[maybeParenIndex].level >= row.level) {
+					maybeParenIndex -= 1;
+				}
+				let maybeParent = rows[maybeParenIndex];
+				if (maybeParent && maybeParent.level == row.level - 1) {
+					passingParentIDs[maybeParent.id] = true;
+				}
+			}
+		}
+		// Re-render the collections with updated filter statuses
+		this.setState((prevState) => {
+			return {
+				targets: [...prevState.targets.map((target) => {
+					let updated = Object.assign({}, target, {
+						passesFilter: !!passingIDs[target.id],
+						passingParent: !!passingParentIDs[target.id]
+					});
+					if (!isFilterEmpty) {
+						// Expand all visible rows during filtering
+						updated.expanded = true;
+					}
+					else {
+						// Filter was cleared: each row's expanded status is restored
+						// to what it was before filtering
+						updated.expanded = !!this.expandedRowsCache[target.id];
+					}
+					return updated;
+				})]
+			};
+		}, () => {
+			if (isFilterEmpty && Object.keys(this.expandedRowsCache).length > 0) {
+				// Filter was cleared: empty the expanded rows cache
+				this.expandedRowsCache = {};
+				// Ensure that the selected row's parent's are not collapsed 
+				this.expandToTarget(this.state.targets, this.state.target);
+			}
+		});
+	}
+
+	updateSelectedTags(tags, callback) {
+		this.setState({ selectedTags: tags }, () => {
+			callback();
+			this.sendUpdate();
+		});
+	}
+
+	// Set extra height required for tags autocomplete to fit in the iframe
+	onTagAutocompleteShown(extraHeight) {
+		this.setState({ extraHeightForTagAutocomplete: extraHeight });
+	}
+
 	renderTargetSelector() {
-		return (
-			this.state.targetSelectorShown
-			? <div>
-				<div className="ProgressWindow-targetSelector">
-					<TargetTree
-						rows={this.state.targets}
-						focused={this.state.targets.find(row => row.id == this.state.target.id)}
-						onExpandRows={this.handleExpandRows}
-						onCollapseRows={this.handleCollapseRows}
-						onRowToggle={this.handleRowToggle}
-						onRowFocus={this.onTargetChange}/>
-				</div>
-				<div className="ProgressWindow-inputRow ProgressWindow-targetSelectorTagsRow">
-					<input className="ProgressWindow-tagsInput"
-						type="text"
-						value={this.state.tags}
-						placeholder={this.text.tagsPlaceholder}
-						onChange={this.onTagsChange}
-						onKeyPress={this.onTagsKeyPress}
-						onFocus={this.onTagsFocus}
-						onBlur={this.onTagsBlur} />
-					<button className="ProgressWindow-button" onClick={this.handleDone}>{this.text.done}</button>
-				</div>
+		if (!this.state.targetSelectorShown) return "";
+		const filterElement = (
+			<div className="ProgressWindow-filterWrapper">
+				<input
+					className="ProgressWindow-filterInput"
+					onInput={this.setFilter}
+					placeholder={this.text.filterPlaceholder}>
+				</input>
+				<button className="ProgressWindow-cross hidden"
+						onClick={this.clearFilter}
+						tabindex={-1}/>
 			</div>
-			: ""
+		)
+		const targetSelectorElement = (
+			<div className="ProgressWindow-targetSelector">
+				<TargetTree
+					rows={this.state.targets.filter(target => target.passesFilter || target.passingParent)}
+					focused={this.state.targets.find(row => row.id == this.state.target.id)}
+					onExpandRows={this.handleExpandRows}
+					onCollapseRows={this.handleCollapseRows}
+					onRowToggle={this.handleRowToggle}
+					onRowFocus={this.onTargetChange}/>
+			</div>
+		)
+		let noteEditorElement = null;
+		if (this.canUserAddNote) {
+			noteEditorElement = (
+				<div className="ProgressWindow-noteEditorRow">
+					<textarea
+						className="ProgressWindow-noteEditor"
+						placeholder={this.text.addNotePlaceholder}
+						value={this.state.note}
+						onChange={this.onNoteChange}
+						onBlur={this.onNoteBlur}
+						onFocus={this.onNoteFocus}
+						onKeyPress={this.onNoteKeyPress}/>
+				</div>
+			)
+		}
+		const tagsInputElement = (
+			<TagsInput
+					existingTags={this.existingTags[this.currentLibraryID] || []}
+					selectedTags={this.state.selectedTags}
+					supportsTagsAutocomplete={this.supportsTagsAutocomplete}
+					updateSelectedTags={this.updateSelectedTags}
+					sendMessage={this.sendMessage}
+					sendUpdate={this.sendUpdate}
+					handleDone={this.handleDone}
+					setAutocompletePopupHeight={this.onTagAutocompleteShown}
+				/>
+		)
+		return (
+			<div>
+				{filterElement}
+				{targetSelectorElement}
+				{noteEditorElement}
+				{tagsInputElement}
+			</div>
 		);
 	}
 	
@@ -567,13 +904,37 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		var childItems = items.filter(item => item.parentItem);
 		items = items.filter(item => !item.parentItem);
 		var newItems = [];
+		
+		// Create a map of parent IDs to their child items
+		var childrenByParent = {};
+		for (let child of childItems) {
+			if (!childrenByParent[child.parentItem]) {
+				childrenByParent[child.parentItem] = [];
+			}
+			childrenByParent[child.parentItem].push(child);
+		}
+		
+		// Add each parent followed by all its children
 		for (let item of items) {
 			newItems.push(item);
-			while (childItems.length && item.id == childItems[0].parentItem) {
-				newItems.push(childItems.shift());
+			if (childrenByParent[item.id]) {
+				// Sort children by order if needed
+				childrenByParent[item.id].sort((a, b) => a.order - b.order);
+				for (let child of childrenByParent[item.id]) {
+					newItems.push(child);
+				}
 			}
 		}
+		
+		// Add remaining children whose parents weren't found
+		for (let child of childItems) {
+			if (!newItems.includes(child)) {
+				newItems.push(child);
+			}
+		}
+		
 		items = newItems;
+		this.handleAlerts(items);
 		
 		return (
 			<div className="ProgressWindow-progressBox">
@@ -603,10 +964,7 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 		);
 		var iconStyle = Object.assign(
 			{},
-			// Indent child items
-			{
-				left: `${item.parentItem ? '22' : '12'}px`
-			},
+			{},
 			item.failed && {
 				backgroundImage: `url('${Zotero.UI.style.imageBase}cross.png')`,
 				backgroundPosition: ""
@@ -706,9 +1064,9 @@ Zotero.UI.ProgressWindow = class ProgressWindow extends React.PureComponent {
 				see <a href={url} title={url}>Getting Help</a> for more information.
 			</span>;
 		}
-		
+
 		return (
-			<div className="ProgressWindow-error" key={index}>
+			<div className="ProgressWindow-error" key={index} role="alert">
 				{contents}
 			</div>
 		);
@@ -896,6 +1254,9 @@ class TargetTree extends React.Component {
 					if (isFocused) {
 						className += "focused";
 					}
+					if (!item.passesFilter && item.passingParent) {
+						className += " context-row";
+					}
 					
 					return (
 						<div className={className} style={{marginLeft: depth * 5 + "px"}}>
@@ -916,8 +1277,264 @@ class TargetTree extends React.Component {
 				onCollapse: item => this.props.onCollapseRows([item.id]),
 				
 				autoExpandAll: false,
-				autoExpandDepth: 0
+				autoExpandDepth: 0,
+				label: Zotero.getString("progressWindow_collectionSelector")
 			}
+		);
+	}
+}
+
+class TagsInput extends React.Component {
+	constructor(props) {
+		super(props);
+		this.state = {
+			tagsInput: "",
+			currentTagIndex: -1
+		};
+		this.tagsInputNode = React.createRef();
+		this.autocompleteRefs = [];
+		this.autocompletePopupRef = React.createRef();
+		this.selectedTagActiveIndex = 0;
+		this.isClickingTag = false;
+		this.text = {
+			done: Zotero.getString('general_done'),
+			tagsPlaceholder: Zotero.getString('progressWindow_tagPlaceholder')
+		};
+	}
+
+	componentDidUpdate(_, prevState) {
+		// Make sure that the selected tag is scrolled to during keyboard navigation
+		if (this.autocompleteRefs.length) {
+			let refIndex =  this.state.currentTagIndex >=0 ? this.state.currentTagIndex : 0;
+			let autocompleteRefNode = this.autocompleteRefs[refIndex];
+			autocompleteRefNode?.scrollIntoView({ block: 'nearest' });
+		}
+		// If tags popup is shown, make sure it is fully visible
+		if (this.state.showTagsAutocomplete && !prevState.showTagsAutocomplete) {
+			window.requestAnimationFrame(() => {
+				this.expandIframeIfNeeded();
+			})
+		}
+	}
+
+	expandIframeIfNeeded() {
+		if (!this.state.showTagsAutocomplete || !this.autocompletePopupRef.current) return;
+		let autocompleteRect = this.autocompletePopupRef.current.getBoundingClientRect();
+		let fullyVisible = autocompleteRect.bottom <= window.innerHeight;
+		// Tell ProgressWindow how much extra height is needed
+		if (!fullyVisible){
+			let extraHeightForPopup = autocompleteRect.bottom - window.innerHeight;
+			this.props.setAutocompletePopupHeight(extraHeightForPopup);
+		}
+	}
+
+	// Add tags to the selected tags and refocus empty input
+	addTag = (tag) => {
+		let selectedTags = new Set(this.props.selectedTags);
+		let tags = tag;
+		// If autocomplete is not supported by the server, retain
+		// old behavior or splitting tags by the comma
+		if (this.props.supportsTagsAutocomplete) {
+			tags = [tag];
+		}
+		else {
+			tags = tag.split(",");
+		}
+		for (let tag of tags) {
+			let trimmedTag = tag.trim();
+			if (trimmedTag) {
+				selectedTags.add(trimmedTag);
+			}
+		}
+		this.setState({ tagsInput: "", currentTagIndex: -1 });
+		this.props.updateSelectedTags(selectedTags, () => {
+			this.tagsInputNode.current.focus();
+		});
+	}
+
+	// Remove the tag and, if there are no more tags left, focus the input
+	removeTag = (tag) => {
+		let selectedTags = new Set(this.props.selectedTags);
+		selectedTags.delete(tag);
+		this.props.updateSelectedTags(selectedTags, () => {
+			if (!this.props.selectedTags.size) {
+				this.tagsInputNode.current.focus();
+			}
+		});
+	}
+
+	// Get all tags from the current library that are not selected yet and match what was typed in the input
+	getAvailableTags() {
+		let availableTags = (this.props.existingTags || []).filter(tag => {
+			return !this.props.selectedTags.has(tag) && tag.toLowerCase().includes(this.state.tagsInput.toLowerCase())
+		});
+		return availableTags;
+	}
+
+	onTagsInputChange = (event) => {
+		let value = event.target.value;
+		this.setState({ tagsInput: value, currentTagIndex: -1 });
+	}
+
+	onTagAutocompleteMouseDown = (index) => {
+		this.isClickingTag = true;
+		this.setState({ currentTagIndex: index });
+	}
+
+	onTagAutocompleteMouseUp = (index) => {
+		this.isClickingTag = false;
+		let tags = this.getAvailableTags();
+		this.addTag(tags[index]);
+		this.setState({ currentTagIndex: -1 })
+	}
+
+	onTagsInputKeyDown = (event) => {
+		let tags = this.getAvailableTags();
+		if (event.key === "Enter") {
+			// On Enter, add the currently selected tag from autocomplete
+			// If there is no selected tag from autocomplete suggestions, add the currently typed tag
+			let newTag = tags[this.state.currentTagIndex] || this.state.tagsInput.trim();
+			if (newTag) {
+				this.addTag(newTag);
+			}
+			else {
+				this.handleDone();
+			}
+			event.preventDefault();
+			event.stopPropagation();
+		}
+		// ArrowUp/ArrowDown navigate through autocomplete suggestions
+		if (!this.state.showTagsAutocomplete || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+		let nextIndex = event.key === "ArrowDown" ? this.state.currentTagIndex + 1 : this.state.currentTagIndex - 1;
+		if (nextIndex >= 0 && nextIndex < tags.length) {
+			this.setState({ currentTagIndex: nextIndex });
+			event.preventDefault();
+		}
+	}
+
+	// Navigation through the rows of selected tags
+	onSelectedTagsKeyDown = (event) => {
+		// ArrowRight/Left navigate tags
+		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+			event.preventDefault();
+			let nextIndex = event.key === 'ArrowLeft' ? this.selectedTagActiveIndex - 1 : this.selectedTagActiveIndex + 1;
+			if (nextIndex >= 0 && nextIndex < this.props.selectedTags.size) {
+				this.selectedTagActiveIndex = nextIndex;
+				this.forceUpdate();
+			}
+		}
+		// Space will remove the tag
+		else if (event.key === ' ') {
+			event.preventDefault();
+			let tag = Array.from(this.props.selectedTags)[this.selectedTagActiveIndex];
+			this.selectedTagActiveIndex = Math.max(this.selectedTagActiveIndex - 1, 0);
+			this.removeTag(tag);
+		}
+		// Handle focus on tab/shift-tab
+		else if (event.key === 'Tab') {
+			event.preventDefault();
+			if (event.shiftKey) {
+				if (document.querySelector(".ProgressWindow-noteEditor")) {
+					document.querySelector(".ProgressWindow-noteEditor").focus();
+				}
+				else {
+					document.querySelector('.tree').focus();
+				}		
+			}
+			else {
+				this.tagsInputNode.current.focus();
+			}
+		}
+	}
+
+	onTagsInputFocus = () => {
+		this.props.sendMessage('tagsfocus');
+		this.clickingTag = false;
+		this.setState({ showTagsAutocomplete: true });
+	}
+
+	onTagsInputBlur = () => {
+		// If the input was blurred due to clicking on an autocomplete suggestion, do nothing
+		if (this.isClickingTag) {
+			return;
+		}
+		// On blur, add the current input as a tag if it is not empty
+		if (this.state.tagsInput.trim().length) {
+			this.addTag(this.state.tagsInput);
+		}
+		this.props.sendMessage('tagsblur');
+		this.props.sendUpdate();
+		this.setState({ showTagsAutocomplete: false });
+	}
+
+	render() {
+		// Cap tags suggestions count at 100 to not create too many nodes
+		let tags = this.getAvailableTags().slice(0,100);
+		let willShowAutocomplete = this.state.showTagsAutocomplete && tags.length;
+		let hasActiveDescendant = willShowAutocomplete && this.state.currentTagIndex >= 0;
+		
+		return (
+			<div className={`ProgressWindow-targetSelectorTagsRow ${willShowAutocomplete ? 'with-autocomplete' : ''} ${this.props.selectedTags.size ? 'hasTags' : ''}`}>
+				<div
+					className="ProgressWindow-tagsRow"
+					tabIndex={this.props.selectedTags.size ? 0 : -1}
+					role="group"
+					aria-activedescendant={`tag_${this.selectedTagActiveIndex}`}
+					onKeyDown={this.onSelectedTagsKeyDown}>
+					{ Array.from(this.props.selectedTags).map((tag, index) => (
+						<div key={tag}
+							id={`tag_${index}`}
+							className={`ProgressWindow-selectedTag ${this.selectedTagActiveIndex === index ? 'active' : ''}`}
+							aria-label={tag}
+							aria-description={Zotero.getString('progressWindow_removeTag')}>
+							<span className="ProgressWindow-tagLabel" aria-hidden="true"> {tag} </span>
+							<span
+								className="ProgressWindow-removeTag"
+								onClick={() => this.removeTag(tag)}>
+							</span>
+						</div>
+					))}
+				</div>
+				<div className="ProgressWindow-inputRow">
+					<input
+						ref={this.tagsInputNode}
+						className="ProgressWindow-tagsInput"
+						type="text"
+						role="combobox"
+						aria-expanded={willShowAutocomplete}
+						aria-controls="tags-autocomplete"
+						aria-activedescendant={hasActiveDescendant ? `tags-autocomplete-option-${this.state.currentTagIndex}` : ""}
+						aria-autocomplete="list"
+						value={this.state.tagsInput}
+						placeholder={this.state.tagsInput ? "" : this.text.tagsPlaceholder}
+						onChange={this.onTagsInputChange}
+						onKeyDown={this.onTagsInputKeyDown}
+						onFocus={this.onTagsInputFocus}
+						onBlur={this.onTagsInputBlur}
+					/>
+					<button className="ProgressWindow-button" onClick={this.props.handleDone}>{this.text.done}</button>
+					{willShowAutocomplete ? (
+						<div 
+							id="tags-autocomplete"
+							className="ProgressWindow-autocomplete" 
+							role="listbox"
+							ref={this.autocompletePopupRef}>
+							{tags.map((tag, index) => (
+								<div
+									key={tag}
+									id={`tags-autocomplete-option-${index}`}
+									ref={el => this.autocompleteRefs[index] = el}
+									className={`ProgressWindow-autocompleteOption ${this.state.currentTagIndex == index ? 'active' : ''}`}
+									role="option"
+									onMouseDown={() => this.onTagAutocompleteMouseDown(index)}
+									onMouseUp={() => this.onTagAutocompleteMouseUp(index)}>
+									{tag}
+								</div>
+							))}
+						</div>
+					) : <></>}
+				</div>
+			</div>
 		);
 	}
 }

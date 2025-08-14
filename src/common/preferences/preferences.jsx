@@ -157,7 +157,7 @@ var Zotero_Preferences = {
 Zotero_Preferences.General = {
 	init: function() {
 
-		if (Zotero.isBrowserExt && !Zotero.isManifestV3) {
+		if (Zotero.isBrowserExt) {
 			let elem = document.getElementById('intercept-and-import');
 			elem.style.display = null;
 			this.mimeTypeHandlingComponent = React.createElement(Zotero_Preferences.Components.MIMETypeHandling, null);
@@ -166,8 +166,6 @@ Zotero_Preferences.General = {
 
 		ReactDOM.render(React.createElement(Zotero_Preferences.Components.ClientStatus, null),
 			document.getElementById("client-status"));
-		document.getElementById("general-button-authorize").onclick =
-			document.getElementById("general-button-reauthorize").onclick = Zotero_Preferences.General.authorize;
 		document.getElementById("general-button-clear-credentials").onclick = Zotero_Preferences.General.clearCredentials;
 
 		Zotero.API.getUserInfo().then(Zotero_Preferences.General.updateAuthorization);
@@ -183,18 +181,6 @@ Zotero_Preferences.General = {
 		if(userInfo) {
 			document.getElementById('general-span-authorization-username').textContent = userInfo.username;
 		}
-	},
-
-	/**
-	 * Authorizes the user
-	 */
-	authorize: function() {
-		Zotero.API.authorize().then(function(data) {
-			Zotero_Preferences.General.updateAuthorization(data);
-		}, function(e) {
-			if (e.message.includes('cancelled')) return;
-			alert("Authorization could not be completed.\n\n"+e.message)
-		});
 	},
 
 	/**
@@ -234,8 +220,19 @@ Zotero_Preferences.Advanced = {
 		document.getElementById("advanced-button-view-output").onclick = Zotero_Preferences.Advanced.viewDebugOutput;
 		document.getElementById("advanced-button-clear-output").onclick = Zotero_Preferences.Advanced.clearDebugOutput;
 		document.getElementById("advanced-button-submit-output").onclick = Zotero_Preferences.Advanced.submitDebugOutput;
-		document.getElementById("advanced-button-update-translators").onclick = function() { Zotero.Repo.update(false) };
-		document.getElementById("advanced-button-reset-translators").onclick = function() { Zotero.Repo.update(true) };
+		document.getElementById("advanced-button-reset-translators").addEventListener('click', async (event) => { 
+			event.target.value = "Resetting translators…";
+			try {
+				// Otherwise "Resetting translators..." flash-appears and it looks glitchy
+				await Promise.all([Zotero.Promise.delay(1000), (async () => {
+					await Zotero.Prefs.removeAllCachedTranslators();
+					return Zotero.Translators.updateFromRemote(true)
+				})()]);
+				event.target.value = "Translators updated!";
+			} catch (e) {
+				event.target.value = "Translator update failed";
+			}
+		});
 		document.getElementById("advanced-button-report-errors").onclick = Zotero_Preferences.Advanced.submitErrors;
 
 		const googleDocsEnabledCheckbox = document.getElementById("advanced-checkbox-google-docs-enabled");
@@ -303,7 +300,7 @@ Zotero_Preferences.Advanced = {
 		toggleDisabled(submitOutputButton, true);
 
 		// We have to request permissions within a user gesture (even though we use this in Zotero.getSystemInfo())
-		if (Zotero.browserExt) {
+		if (Zotero.isBrowserExt && !Zotero.isDebug) {
 			try {
 				await browser.permissions.request({permissions: ['management']});
 			} catch (e) {
@@ -338,7 +335,7 @@ Zotero_Preferences.Advanced = {
 		toggleDisabled(reportErrorsButton, true);
 		
 		// We have to request permissions within a user gesture (even though we use this in Zotero.getSystemInfo())
-		if (Zotero.browserExt) {
+		if (Zotero.isBrowserExt && !Zotero.isDebug) {
 			try {
 				await browser.permissions.request({permissions: ['management']});
 			} catch (e) {
@@ -789,8 +786,14 @@ Zotero_Preferences.Components.MIMETypeHandling = class MIMETypeHandling extends 
 	}
 	
 	handleCheckboxChange(event) {
-		Zotero.Prefs.set('interceptKnownFileTypes', event.target.checked);
-		this.setState({enabled: event.target.checked});
+		const isEnabled = event.target.checked;
+		Zotero.Prefs.set('interceptKnownFileTypes', isEnabled);
+		this.setState({enabled: isEnabled});
+		if (isEnabled) {
+			Zotero.ContentTypeHandler.enable();
+		} else {
+			Zotero.ContentTypeHandler.disable();
+		}
 	}
 	
 	handleSelectChange(event) {

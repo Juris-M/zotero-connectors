@@ -28,6 +28,7 @@ const ZOTERO_CONFIG = {
 	DOMAIN_NAME: 'zotero.org',
 	DOMAIN_NAME_JURISM: 'juris-m.github.io',
 	REPOSITORY_URL: 'https://jurism.xyz/updater/',
+	SETTINGS_URL: 'https://jurism.xyz/settings',
 	REPOSITORY_CHECK_INTERVAL: 86400, // 24 hours
 	REPOSITORY_RETRY_INTERVAL: 3600, // 1 hour
 	REPOSITORY_CHANNEL: 'trunk',
@@ -36,7 +37,7 @@ const ZOTERO_CONFIG = {
 	CLIENT_DOWNLOAD_URL: 'https://juris-m.github.io/release',
 	PRIVACY_POLICY: 'https://juris-m.github.io/privacy',
 	API_URL: 'https://api.zotero.org/',
-	GOOGLE_DOCS_API_URL: "https://script.googleapis.com/v1/scripts/AKfycbw3JAct47AghnQ8HQbu3VVzxW-Sniq3TeMERP9V5kpC2RA4mJswnNm5s7vSz50pkVQV:run",
+	GOOGLE_DOCS_API_URL: "https://script.googleapis.com/v1/scripts/AKfycbzCBCyrm1hnQJDEckGkOJabbhv4SO7udII0SK5BoKbgJLxy5I6A5LiGZ_xAZ-eOYEIJuw:run",
 	OAUTH: {
 		ZOTERO: {
 			REQUEST_URL: 'https://www.zotero.org/oauth/request',

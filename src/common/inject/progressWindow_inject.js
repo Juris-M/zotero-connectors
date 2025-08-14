@@ -56,9 +56,10 @@ if (isTopWindow) {
 	var nextSessionUpdateData;
 	
 	var isReadOnly = false;
+	var isFilesEditable = false;
 	var syncDelayIntervalID;
 	var insideIframe = false;
-	var insideTags = false;
+	var closeTimerDisabled = false;
 	var blurred = false;
 	var frameSrc;
 	var frameIsHidden = false;
@@ -96,9 +97,9 @@ if (isTopWindow) {
 	/**
 	 * Get selected collection and collections list from client and update popup
 	 */
-	async function updateFromClient(prefix) {
+	async function updateFromClient(prefix, retryOnReadOnly = true) {
 		try {
-			var response = await Zotero.Connector.callMethod("getSelectedCollection", {})
+			var response = await Zotero.Connector.callMethod("getSelectedCollection", { switchToReadableLibrary: true })
 		}
 		catch (e) {
 			// TODO: Shouldn't this be coupled to the actual save process?
@@ -114,12 +115,12 @@ if (isTopWindow) {
 			response.libraryEditable = true;
 		}
 		
-		// Disable target selector for read-only library (which normally shouldn't happen,
-		// because the client switches automatically to My Library)
+		// The library will change to editable upon save to a read-only library,
+		// so the currently selected library information is wrong/irrelevant
 		if (response.libraryEditable === false) {
-			response.targets = undefined;
-			addError("collectionNotEditable");
-			startCloseTimer(8000);
+			if (retryOnReadOnly) {
+				setTimeout(() => updateFromClient(prefix, false), 250);
+			}
 			return;
 		}
 		
@@ -141,13 +142,16 @@ if (isTopWindow) {
 		}
 		var target = {
 			id,
-			name: response.name
+			name: response.name,
+			filesEditable: response.filesEditable
 		};
 		
 		if (response.libraryEditable) {
 			lastSuccessfulTarget = target;
 		}
 		
+		let targets = response.targets.filter(t => !isFilesEditable || t.filesEditable);
+
 		// TEMP: Make sure libraries have levels (added to client in 5.0.46)
 		if (response.targets) {
 			for (let row of response.targets) {
@@ -157,7 +161,15 @@ if (isTopWindow) {
 			}
 		}
 		
-		changeHeadline(prefix, target, response.targets);
+		// Format tags for autocomplete
+		// Tags array contains objects {tag : ""} that may contain duplicate values due to different types
+		// Unwrap the tag objects and deduplicate tags values to keep this object format {libraryID: [tag1, tag2, ...]}
+		let tags = {};
+		Object.entries(response.tags || []).forEach(([libraryID, tagArr]) => {
+			tags[libraryID] = [...new Set(tagArr.map(item => item.tag))];
+		});
+
+		changeHeadline(prefix, target, targets, tags);
 	}
 	
 	async function addError() {
@@ -212,7 +224,7 @@ if (isTopWindow) {
 	function startCloseTimer(delay) {
 		// Don't start the timer if the mouse is over the popup or the tags box has focus
 		if (insideIframe) return;
-		if (insideTags) return;
+		if (closeTimerDisabled) return;
 		
 		if (!delay) delay = 5000;
 		stopCloseTimer();
@@ -230,6 +242,7 @@ if (isTopWindow) {
 		var iframe = document.createElement('iframe');
 		iframe.id = frameID;
 		iframe.src = frameSrc;
+		iframe.title = Zotero.getString('general_saveTo', 'Zotero');
 		iframe.setAttribute('data-single-file-hidden-frame', '');
 		var style = {
 			position: 'fixed',
@@ -243,7 +256,9 @@ if (isTopWindow) {
 			padding: "none",
 			margin: "initial",
 			zIndex: 2147483647,
-			display: 'none'
+			display: 'none',
+			// frame becomes scrollable if the user zooms in (wcag 1.4.10), or half of it will be inaccessible
+			maxHeight: '90vh' 
 		};
 		for (let i in style) iframe.style[i] = style[i];
 		window.top.document.body.appendChild(iframe);
@@ -293,14 +308,14 @@ if (isTopWindow) {
 			updatingSession = true;
 			
 			try {
-				await Zotero.Connector.callMethod(
+				await sendMessage(
 					"updateSession",
 					{
-						sessionID: currentSessionID,
 						target: data.target.id,
-						tags: data.tags
-							// TEMP: Avoid crash on leading/trailing comma pre-5.0.57
-							? data.tags.replace(/(^,|,$)/g, '') : data.tags
+						tags: data.tags,
+						note: data.note.replace(/\n/g, "<br>"), // replace newlines with <br> for note-editor
+						resaveAttachments: !lastSuccessfulTarget.filesEditable && data.target.filesEditable,
+						removeAttachments: lastSuccessfulTarget.filesEditable && !data.target.filesEditable
 					}
 				);
 			}
@@ -341,8 +356,8 @@ if (isTopWindow) {
 		addMessageListener('progressWindowIframe.mouseenter', handleMouseEnter);
 		addMessageListener('progressWindowIframe.mouseleave', handleMouseLeave);
 		
-		addMessageListener('progressWindowIframe.tagsfocus', () => insideTags = true);
-		addMessageListener('progressWindowIframe.tagsblur', () => insideTags = false);
+		addMessageListener('progressWindowIframe.disableCloseTimer', () => closeTimerDisabled = true);
+		addMessageListener('progressWindowIframe.enableCloseTimer', () => closeTimerDisabled = false);
 		
 		addMessageListener('progressWindowIframe.blurred', async function() {
 			blurred = true;
@@ -407,10 +422,9 @@ if (isTopWindow) {
 		// (e.g., when displaying the Select Items window) we can skip displaying it
 		frameIsHidden = false;
 		
-		var [sessionID, headline, readOnly, delay] = args;
-		
-		if (delay) {
-			await Zotero.Promise.delay(delay);
+		var [sessionID, headline, readOnly, filesEditable] = args;
+		if (typeof filesEditable != "undefined") {
+			isFilesEditable = filesEditable;
 		}
 		
 		// Reopening existing popup
@@ -434,6 +448,8 @@ if (isTopWindow) {
 		else {
 			await updateFromClient(headline);
 		}
+		
+		return true;
 	});
 	
 	/**
@@ -470,13 +486,13 @@ if (isTopWindow) {
 	
 	Zotero.Messaging.addMessageListener("progressWindow.done", (returnValue) => {
 		closeOnLeave = true;
-		if (document.location.href.startsWith(Zotero.getExtensionURL('confirm.html'))) {
-			setTimeout(function() {
-				window.close();
-			}, 1000);
+		if (document.location.href.startsWith(Zotero.getExtensionURL('confirm/confirm.html'))) {
+			// Handled in contentTypeHandler
+			return;
 		}
-		else if (returnValue[0]) {
+		if (returnValue[0]) {
 			startCloseTimer(3000);
+			addEvent("willHide");
 		}
 		else {
 			if (returnValue.length < 2) {

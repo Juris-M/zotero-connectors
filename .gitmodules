@@ -22,3 +22,6 @@
 	path = lib/SingleFile-Lite
 	url = https://github.com/gildas-lormeau/SingleFile-Lite.git
 	branch = main
+[submodule "src/zotero-schema"]
+	path = src/zotero-schema
+	url = https://github.com/Juris-M/zotero-schema.git

@@ -46,13 +46,11 @@
 				<div class="group-title">Save to Juris-M.org</div>
 				<div class="group-content">
 					<div id="general-authorization-not-authorized">
-						<p>Juris-M Connector must be authorized in order to save items to zotero.org when Zotero is not open.</p>
-						<p><input type="button" value="Authorize" id="general-button-authorize"/></p>
+						<p>Juris-M Connector is not currently authorized to save items to zotero.org. You will be prompted for authorization if you try to save items while Juris-M is not open.</p>
 					</div>
 					<div id="general-authorization-authorized" style="display:none">
 						<p>Juris-M Connector will save items to zotero.org as <span id="general-span-authorization-username"></span> when Zotero is not open.</p>
 						<p>
-							<input type="button" value="Reauthorize" id="general-button-reauthorize"/>
 							<input type="button" value="Clear Credentials" id="general-button-clear-credentials"/>
 						</p>
 						<p>
@@ -108,8 +106,7 @@
 				<div class="group-content">
 					<label><input type="checkbox" id="advanced-checkbox-report-translator-failure"/> Report broken site translators to zotero.org</label>
 					<p>
-						<input type="button" id="advanced-button-update-translators" value="Update Translators"/>
-						<input type="button" id="advanced-button-reset-translators" value="Reset Translators"/>
+						<input type="button" id="advanced-button-reset-translators" value="Reset Translators" title="Reset Translators"/>
 						<!--BEGIN DEBUG-->
 						<input type="button" id="advanced-button-open-translator-tester" value="Open Translator Tester"/>
 						<!--END DEBUG-->
@@ -124,7 +121,7 @@
 							<label><input id="advanced-checkbox-google-docs-enabled" type="checkbox" data-pref="integration.googleDocs.enabled"/>Enable Google Docs Integration</label>
 						</p>
 						<div id="advanced-google-docs-subprefs" style="margin-left: 1em">
-							<label style="margin-top: -7px; margin-bottom: 5px"><input type="checkbox" data-pref="integration.googleDocs.useGoogleDocsAPI"/>Enable Google Docs Integration v2 (NEW)</label>
+<!--							<label style="margin-top: -7px; margin-bottom: 5px"><input type="checkbox" data-pref="integration.googleDocs.useGoogleDocsAPI"/>Enable Google Docs Integration v2 (NEW)</label>-->
 							<label>Add/Edit Citation Shortcut<span class="shortcut-input" data-pref="shortcuts.cite"></span></label>
 						</div>
 					</div>
@@ -160,7 +157,6 @@
 		<script type="text/javascript" src="../i18n.js"></script>
 		<script type="text/javascript" src="preferences.js"></script>
 		<!--BEGIN DEBUG-->
-		<script type="text/javascript" src="../test/testSetup.js"></script>
 		<script type="text/javascript" src="../lib/sinon.js"></script>
 		<!--END DEBUG-->
 	</body>

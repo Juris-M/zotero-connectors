@@ -31,6 +31,7 @@ var Zotero = global.Zotero = new function() {
 	this.isConnector = true;
 	// Old flag for 4.0 connector, probably not used anymore
 	this.isFx = false;
+	this.isDebug = false;
 	
 	// For autocomplete in IDEs
 	this.allowRepoTranslatorTester = this.isManifestV3
@@ -69,7 +70,7 @@ var Zotero = global.Zotero = new function() {
 				this.isChrome = true;
 			}
 		}
-		this.isTranslateSandbox = typeof document != 'undefined' && document.location.href.endsWith('translateSandbox.html');
+		this.isOffscreen = typeof document != 'undefined' && document.location.href.endsWith('offscreenSandbox.html');
 
 		this.isMac = (global.navigator.platform.substr(0, 3) == "Mac");
 		this.isWin = (global.navigator.platform.substr(0, 3) == "Win");
@@ -96,7 +97,7 @@ var Zotero = global.Zotero = new function() {
 	this.appName = `${ZOTERO_CONFIG.CLIENT_NAME} Connector for ${this.clientName}`;
 	
 	if (this.isBrowserExt) {
-		if (!this.isTranslateSandbox) {
+		if (!this.isOffscreen) {
 			this.version = browser.runtime.getManifest().version;
 		}
 	}
@@ -110,66 +111,38 @@ var Zotero = global.Zotero = new function() {
 	
 	this.migrate = async function() {
 		let lastVersion = Zotero.Prefs.get('lastVersion') || Zotero.version;
-		var [major, minor, patch] = lastVersion.split('.');
-		Zotero.Prefs.set('lastVersion', Zotero.version);
-		// If coming from a version before 5.0.24, reset the
-		// auto-associate setting for all existing proxies, since it wasn't being set properly for
-		// proxies imported from the client
-		if (major == 5 && minor == 0 && patch < 24 && Zotero.Prefs.get('proxies.clientChecked')) {
-			for (let proxy of Zotero.Proxies.proxies) {
-				proxy.autoAssociate = true;
-			}
-			Zotero.Proxies.storeProxies();
-		}
-		if (major == 5 && minor == 0 && patch < 32 && Zotero.Proxies.proxies.length > 1) {
-			let pairs = [];
-			// merge pairs of proxies with http and https protocols
-			for (let i = 0; i < Zotero.Proxies.proxies.length; i++) {
-				if (Zotero.Proxies.length == i+1) break;
-				let proxy1 = Zotero.Proxies.proxies[i];
-				let scheme = proxy1.scheme.replace('https', '').replace('http', '');
-				for (let j = i+1; j < Zotero.Proxies.proxies.length; j++) {
-					let proxy2 = Zotero.Proxies.proxies[j];
-					if (scheme == proxy2.scheme.replace('https', '').replace('http', '')) {
-						pairs.push([proxy1, proxy2]);
-						break;
-					}
-				}
-			}
-			for (let [proxy1, proxy2] of pairs) {
-				let json = proxy1.toJSON();
-				delete json.id;
-				let proxy = new Zotero.Proxy(json);
-				proxy.dotsToHyphens = true;
-				proxy.hosts = proxy1.hosts.concat(proxy2.hosts);
-				proxy.scheme = proxy.scheme.replace('http://', '').replace('https://', '');
-				Zotero.Proxies.remove(proxy1);
-				Zotero.Proxies.remove(proxy2);
-				Zotero.Proxies.save(proxy);
-			}
-			// remove protocols of single protocolless
-			for (let proxy of Zotero.Proxies.proxies) {
-				if (proxy.scheme.includes('://')) {
-					proxy.scheme = proxy.scheme.substr(proxy.scheme.indexOf('://')+3);
-					proxy.compileRegexp();
-					Zotero.Proxies.save(proxy);
-				}
-			}
-		}
-		// Botched dotsToHyphen pref migration to protocolless schemes in 5.0.32
-		if (major == 5 && minor == 0 && patch < 35) {
-			for (let proxy of Zotero.Proxies.proxies) {
-				if (proxy.scheme.indexOf('%h') == 0) {
-					proxy.dotsToHyphens = true;
-				}
-			}
-			Zotero.Proxies.storeProxies();
-		}
 		// Skip first-use dialog for existing users when enabled for non-Firefox browsers
-		if (major == 5 && minor == 0 && patch < 87 && !this.isFirefox) {
+		if (Zotero.Utilities.semverCompare(lastVersion, "5.0.87") < 0 && !this.isFirefox) {
 			Zotero.Prefs.set('firstUse', false);
 		}
+		if (Zotero.Utilities.semverCompare(lastVersion, "5.0.110") < 0) {
+			Zotero.Prefs.set('integration.googleDocs.useGoogleDocsAPI', false)
+		}
+		if (Zotero.Utilities.semverCompare(lastVersion, "5.0.168") < 0 && Zotero.isFirefox) {
+			// We were setting DNR header replacement rules on Firefox http.js without
+			// removing them, and this breaks translation sometimes
+			// See https://github.com/zotero/translate/issues/41
+			const rules = await browser.declarativeNetRequest.getDynamicRules({});
+			let ruleIDs = [];
+			for (const rule of rules) {
+				if (rule.action.type === 'modifyHeaders') {
+					ruleIDs.push(rule.id);
+				}
+			}
+			if (ruleIDs.length) {
+				await browser.declarativeNetRequest.updateDynamicRules({ removeRuleIds: ruleIDs });
+			}
+		}
+		Zotero.Prefs.set('lastVersion', Zotero.version);
 	};
+
+	/**
+	 * Gets Connector version. Used in API restricted JS environments (offscreen, sandbox).
+	 * @returns {string|*}
+	 */
+	this.getVersion = function() {
+		return Zotero.version;
+	}
 	
 	/**
 	 * Initializes Zotero services for the global page in Chrome or Safari
@@ -177,7 +150,7 @@ var Zotero = global.Zotero = new function() {
 	this.initGlobal = async function() {
 		await Zotero.Errors.init();
 		if (Zotero.isManifestV3) {
-			Zotero.logError(new Error(`Initialization started at ${Zotero.Date.dateToSQL(new Date())}`));
+			Zotero.Errors.logServiceWorkerStarts(Zotero.Date.dateToSQL(new Date()));
 		}
 		Zotero.isBackground = true;
 		
@@ -222,13 +195,17 @@ var Zotero = global.Zotero = new function() {
 		Zotero.Prefs.set('debug.store', false);
 		if (Zotero.isBrowserExt) {
 			Zotero.WebRequestIntercept.init();
+			Zotero.ContentTypeHandler.init();
 			await Zotero.Connector_Browser.init();
 		}
 		await Zotero.i18n.init();
-		Zotero.Repo.init();
+		Zotero.Translators.init();
 		Zotero.Proxies.init();
 		await this._initDateFormatsJSON();
 		Zotero.initDeferred.resolve();
+		if (Zotero.GoogleDocs.API.init) {
+			await Zotero.GoogleDocs.API.init();
+		}
 		Zotero.initialized = true;
 
 		await Zotero.migrate();
@@ -256,8 +233,9 @@ var Zotero = global.Zotero = new function() {
 		Zotero.initialized = true;
 	};
 
-	this.initTranslateSandbox = async function() {
-		this.version = await Zotero.TranslateSandbox.sendMessage('getVersion');
+	this.initOffscreen = async function() {
+		this.version = await Zotero.getVersion();
+		Zotero.Schema.init();
 		await this._initDateFormatsJSON();
 		await Zotero.Prefs.loadNamespace(['translators.', 'downloadAssociatedFiles', 'automaticSnapshots',
 			'reportTranslationFailure', 'capitalizeTitles']);
@@ -270,7 +248,7 @@ var Zotero = global.Zotero = new function() {
 		}
 		else {
 			let url = Zotero.getExtensionURL('utilities/resource/dateFormats.json');
-			if (Zotero.isTranslateSandbox) {
+			if (Zotero.isOffscreen) {
 				url = await url;
 			}
 			let xhr = await Zotero.HTTP.request('GET', url, {responseType: 'json'});
@@ -279,44 +257,7 @@ var Zotero = global.Zotero = new function() {
 		Zotero.Date.init(dateFormatsJSON);
 	};
 
-	/**
-	 * Get versions, platform, etc.
-	 */
-	this.getSystemInfo = async function() {
-		var info;
-		if (Zotero.isSafari && Zotero.isBackground) {
-			info = {
-				connector: "true",
-				version: this.version,
-				platform: "Safari App Extension",
-			};
-		} else {
-			info = {
-				connector: "true",
-				version: this.version,
-				platform: navigator.platform,
-				locale: navigator.language,
-				userAgent: navigator.userAgent
-			};
-		}
-		
-		info.appName = Zotero.appName;
-		info.zoteroAvailable = !!(await Zotero.Connector.checkIsOnline());
-		
-		
-		if (Zotero.isBackground && Zotero.isBrowserExt) {
-			let granted = await browser.permissions.contains({permissions: ['management']});
-			if (granted) {
-				let extensions = await browser.management.getAll();
-				info.extensions = extensions
-					.filter(extension => extension.enabled && extension.name != Zotero.appName)
-					.map(extension => {
-						return `${extension.name}: ${extension.version}, ${extension.type}`;
-					}).join(', ')
-			}
-		}
-		return JSON.stringify(info, null, 2);
-	};
+	this.getSystemInfo = (...args) => Zotero.Errors.getSystemInfo(...args);
 	
 	/**
 	 * Writes a line to the debug console
@@ -401,7 +342,7 @@ Zotero.Prefs = new function() {
 		"connector.url": 'http://127.0.0.1:24119/',
 		"capitalizeTitles": false,
 		"interceptKnownFileTypes": true,
-		"allowedCSLExtensionHosts": ["raw.githubusercontent.com"],
+		"allowedCSLExtensionHosts": ["^https://raw\\.githubusercontent\\.com/", "^https://gitee\\.com/.+/raw/"],
 		"allowedInterceptHosts": [],
 		"firstUse": true,
 		"firstSaveToServer": true,
@@ -418,7 +359,8 @@ Zotero.Prefs = new function() {
 		"proxies.loopPreventionTimestamp": 0,
 		
 		"integration.googleDocs.enabled": true,
-		"integration.googleDocs.useGoogleDocsAPI": false,
+		"integration.googleDocs.useV2API": false,
+		"integration.googleDocs.forceDisableV2API": false,
 		
 		"shortcuts.cite": {ctrlKey: true, altKey: true, key: 'c'}
 	};
@@ -439,7 +381,13 @@ Zotero.Prefs = new function() {
 			if (!(pref in this.syncStorage)) throw new Error(`Prefs.get: ${pref} not preloaded`);
 			return this.syncStorage[pref];
 		} catch (e) {
-			if (DEFAULTS.hasOwnProperty(pref)) return DEFAULTS[pref];
+			if (DEFAULTS.hasOwnProperty(pref)) {
+				if (Zotero.isInject) {
+					Zotero.logError(new Error(`Prefs.get(${pref}) in injected script is getting a default value. `
+						`This may be a bug. Either preload prefs or use getAsync()`));
+				}
+				return DEFAULTS[pref];
+			}
 			if (Zotero.isBackground) {
 				throw new Error("Zotero.Prefs: Invalid preference "+pref);
 			} else {
@@ -451,6 +399,10 @@ Zotero.Prefs = new function() {
 	this.getAll = function() {
 		let prefs = Object.assign({}, DEFAULTS, this.syncStorage);
 		delete prefs['translatorMetadata'];
+		// Do not return translator code from storage as they are not prefs to be edited
+		for (const key of Object.keys(prefs)) {
+			if (key.startsWith(Zotero.Translators.PREFS_TRANSLATOR_CODE_PREFIX)) delete prefs[key];
+		}
 		return Zotero.Promise.resolve(prefs);
 	};
 	
@@ -511,5 +463,11 @@ Zotero.Prefs = new function() {
 	this.clear = function(pref) {
 		if (Array.isArray(pref)) return pref.forEach((p) => this.clear(p));
 		delete this.syncStorage[pref];
+	}
+
+	this.removeAllCachedTranslators = function() {
+		Zotero.debug('Removing all cached translators');
+		let cachedTranslators = Object.keys(this.syncStorage).filter(key => key.startsWith(Zotero.Translators.PREFS_TRANSLATOR_CODE_PREFIX));
+		return this.clear(cachedTranslators);
 	}
 }

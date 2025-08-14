@@ -25,14 +25,14 @@
 
 'use strict';
 
+const path = require('path');
 const replaceBrowser = require('./scripts/replace_browser');
 const exec = require('child_process').exec;
 const through = require('through2');
 const gulp = require('gulp');
 const plumber = require('gulp-plumber');
 const babel = require('@babel/core');
-const pth = require('path');
-const schemaJSON = require('./src/zotero/resource/schema/global/schema.json');
+const schemaJSON = require('./src/zotero-schema/schema.json');
 const argv = require('yargs')
 	.boolean('p')
 	.alias('p', 'production')
@@ -48,8 +48,6 @@ var injectInclude = [
 	'zotero_config.js',
 	'zotero.js',
 	'translate/promise.js',
-	'http.js',
-	'proxy.js',
 	'utilities/date.js',
 	'utilities/openurl.js',
 	'utilities/xregexp-all.js',
@@ -57,7 +55,9 @@ var injectInclude = [
 	'utilities/resource/zoteroTypeSchemaData.js',
 	'utilities/utilities.js',
 	'utilities/utilities_item.js',
-	'utilities.js',
+	'utilities.js',	
+	'http.js',
+	'proxy.js',
 	'translate/debug.js',
 	'utilities/schema.js',
 	'translate/rdf/init.js',
@@ -66,9 +66,9 @@ var injectInclude = [
 	'translate/rdf/identity.js',
 	'translate/rdf/rdfparser.js',
 	'translate/translation/translate.js',
+	'translate/translation/translate_item.js',
 	'translate/translator.js',
 	'translate/utilities_translate.js',
-	'translate_item.js',
 	'inject/http.js',
 	'inject/sandboxManager.js',
 	'integration/connectorIntegration.js',
@@ -78,7 +78,6 @@ var injectInclude = [
 	'messaging_inject.js',
 	'inject/progressWindow_inject.js',
 	'inject/modalPrompt_inject.js',
-	'zoteroFrame.js',
 	'messagingGeneric.js',
 	'i18n.js',
 	'singlefile.js'
@@ -89,7 +88,6 @@ if (argv.p) {
 } else {
 	injectIncludeLast = [
 		'tools/testTranslators/translatorTester_messages.js',
-		'tools/testTranslators/translatorTester.js',
 		'inject/inject.js',
 		'tools/testTranslators/translatorTester_inject.js'
 	];
@@ -102,7 +100,7 @@ var injectIncludeBrowserExt = ['browser-polyfill.js'].concat(
 var injectIncludeManifestV3 = ['browser-polyfill.js'].concat(
 	injectInclude,
 	['api.js'],
-	['translateSandbox/translateSandboxFunctionOverrides.js', 'translateSandbox/translateSandboxManager.js'],
+	['inject/virtualOffscreenTranslate.js'],
 	injectIncludeLast);
 
 var backgroundInclude = [
@@ -110,13 +108,6 @@ var backgroundInclude = [
 	'zotero.js',
 	'i18n.js',
 	'translate/promise.js',
-	'prefs.js',
-	'api.js',
-	'http.js',
-	'oauthsimple.js',
-	'proxy.js',
-	'connector.js',
-	'repo.js',
 	'utilities/date.js',
 	'utilities/openurl.js',
 	'utilities/xregexp-all.js',
@@ -126,9 +117,17 @@ var backgroundInclude = [
 	'utilities/utilities_item.js',
 	'utilities/resource/zoteroTypeSchemaData.js',
 	'utilities.js',
+	'prefs.js',
+	'api.js',
+	'http.js',
+	'oauthsimple.js',
+	'proxy.js',
+	'connector.js',
+	'repo.js',
 	'translate/debug.js',
 	'translate/tlds.js',
 	'translate/translator.js',
+	'itemSaver_background.js',
 	'translators.js',
 	'cachedTypes.js',
 	'errors_webkit.js',
@@ -140,21 +139,18 @@ var backgroundInclude = [
 
 if (!argv.p) {
 	backgroundInclude.push('tools/testTranslators/translatorTester_messages.js',
-		'tools/testTranslators/translatorTester.js',
-		'tools/testTranslators/translatorTester_global.js',
-		'test/messages.js',
-		'test/testSetup.js',
+		'tools/testTranslators/translatorTester_background.js',
 		'lib/sinon.js');
+		
+	injectIncludeManifestV3.push('test/testInject.js');
 }
 var backgroundIncludeBrowserExt = ['browser-polyfill.js'].concat(backgroundInclude, [
 	'webRequestIntercept.js',
 	'contentTypeHandler.js',
-	'firefoxPDF.js'
-]);
-
-var backgroundIncludeManifestV3 = backgroundIncludeBrowserExt.filter(file => !file.includes('SingleFile')).concat([
-	'lib/SingleFile/single-file-extension-core.js',
-	'lib/SingleFile/single-file-background.js',
+	'saveWithoutProgressWindow.js',
+	'messagingGeneric.js',
+	'browserAttachmentMonitor/browserAttachmentMonitor.js',
+	'offscreen/offscreenFunctionOverrides.js', 'background/offscreenManager.js',
 ]);
 
 function reloadChromeExtensionsTab(cb) {
@@ -185,8 +181,8 @@ function replaceScriptsHTML(string, match, scripts) {
 function processFile() {
 	return through.obj(async function(file, enc, cb) {
 		console.log(file.path.slice(file.cwd.length));
-		var offset = file.cwd.split(pth.sep).length;
-		var parts = file.path.split(pth.sep);
+		var offset = file.cwd.split(path.sep).length;
+		var parts = file.path.split(path.sep);
 		var basename = parts[parts.length-1];
 		var ext = basename.split('.')[1];
 		for (var i = offset; i < parts.length; i++) {
@@ -249,7 +245,8 @@ function processFile() {
 			case 'zotero.js':
 				var contents = file.contents.toString();
 				if (!argv.p) {
-					contents = contents.replace('"debug.log": false', '"debug.log": true');
+					contents = contents.replace('"debug.log": false', '"debug.log": true')
+						.replace("this.isDebug = false", "this.isDebug = true");
 				}
 				contents = contents.replace(/\/\* this\.allowRepoTranslatorTester = SET IN BUILD SCRIPT \*\//,
 					`this.allowRepoTranslatorTester = ${!!process.env.ZOTERO_REPOSITORY_URL}`);
@@ -265,6 +262,7 @@ function processFile() {
 			case 'preferences.html':
 			case 'progressWindow.html':
 			case 'modalPrompt.html':
+			case 'offscreenSandbox.html':
 				file.contents = Buffer.from(file.contents.toString()
 					.replace(/<!--BEGIN DEBUG-->([\s\S]*?)<!--END DEBUG-->/g, argv.p ? '' : '$1'));
 				break;
@@ -276,51 +274,57 @@ function processFile() {
 		if (type === 'common' || type === 'browserExt') {
 			if (file.path.includes('.html')) {
 				file.contents = Buffer.from(replaceScriptsHTML(
-					file.contents.toString(), "<!--SCRIPTS-->", injectIncludeBrowserExt.map(s => `../../${s}`)));
+					file.contents.toString(), "<!--SCRIPTS-->", injectIncludeManifestV3.map(s => `../../${s}`)));
 			}
-			if (basename == 'manifest-v3.json') {
+			for (let browser of ['manifestv3', 'firefox']) {
+				if (basename === 'manifest.json' && browser === 'manifestv3'
+					|| basename === 'manifest-v3.json' && browser === 'firefox') {
+					continue;
+				}
+				
 				f = file.clone({contents: false});
-				f.path = (parts.slice(0, i-1).join('/') + `/build/manifestv3/` + parts.slice(i+1).join('/'))
-					.replace('manifest-v3.json', 'manifest.json');
-				console.log(`-> ${f.path.slice(f.cwd.length)}`);
-				f.contents = Buffer.from(f.contents.toString()
-					.replace("/*INJECT SCRIPTS*/",
-						injectIncludeManifestV3.map((s) => `"${s}"`).join(',\n\t\t\t'))
-					.replace(/"version": "[^"]*"/, '"version": "' + argv.connectorVersion + '"'));
-				this.push(f);
-			}
-			else {
-				['chrome', 'firefox', 'manifestv3'].forEach((browser) => {
-					f = file.clone({contents: false});
-					if (['manifest.json', "manifest-v3.json", "background.js", "background-worker.js"].includes(basename)) {
-						let backgroundScripts = browser == 'manifestv3' ? backgroundIncludeManifestV3 : backgroundIncludeBrowserExt;
+				if (['manifest.json', "manifest-v3.json", "background.js", "background-worker.js"].includes(basename)) {
+					let contents = f.contents.toString();
+					if (basename == 'manifest-v3.json') {
+						parts[parts.length - 1] = 'manifest.json';
+						contents = contents
+							.replace("/*INJECT SCRIPTS*/",
+								injectIncludeManifestV3.map((s) => `"${s}"`).join(',\n\t\t\t'));
+						if (process.env.CHROME_EXTENSION_KEY && ['manifestv3'].includes(browser)) {
+							contents = contents.replace(/("name": "[^"]*")/, `$1,\n\t"key": "${process.env.CHROME_EXTENSION_KEY}"`);
+						}
+					}
+					else {
+						let backgroundScripts = backgroundIncludeBrowserExt;
 						let injectScripts = browser == "manifestv3" ? injectIncludeManifestV3 : injectIncludeBrowserExt;
-						let contents = f.contents.toString()
+						contents = contents
 							.replace("/*BACKGROUND SCRIPTS*/",
 								backgroundScripts.map((s) => `"${s}"`).join(',\n\t\t\t'))
 							.replace("/*INJECT SCRIPTS*/",
 								injectScripts.map((s) => `"${s}"`).join(',\n\t\t\t'))
-							.replace(/"version": "[^"]*"/, '"version": "' + argv.connectorVersion + '"');
-						if (typeof process.env.ZOTERO_BETA_BUILD_EXPIRATION != 'undefined') {
-							contents = contents.replace('_betaBuildExpiration = new Date(2053, 0, 1, 0, 0, 0)',
-								`_betaBuildExpiration = new Date(${process.env.ZOTERO_BETA_BUILD_EXPIRATION})`);
-						}
-						f.contents = Buffer.from(contents);
 					}
-					if (basename == 'zotero.js') {
-						let contents = f.contents.toString()
-							.replace('this.version = [^;]*', `this.version = "${argv.version}";`);
-						contents = replaceBrowser(contents, {
-							browserExt: true,
-							firefox: browser == 'firefox',
-							manifestV3: browser == 'manifestv3'
-						});
-						f.contents = Buffer.from(contents);
+					
+					contents = contents
+						.replace(/"version": "[^"]*"/, '"version": "' + argv.connectorVersion + '"');
+					if (typeof process.env.ZOTERO_BETA_BUILD_EXPIRATION != 'undefined') {
+						contents = contents.replace('_betaBuildExpiration = new Date(2053, 0, 1, 0, 0, 0)',
+							`_betaBuildExpiration = new Date(${process.env.ZOTERO_BETA_BUILD_EXPIRATION})`);
 					}
-					f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/` + parts.slice(i+1).join('/');
-					console.log(`-> ${f.path.slice(f.cwd.length)}`);
-					this.push(f);
-				});
+					f.contents = Buffer.from(contents);
+				}
+				if (basename == 'zotero.js') {
+					let contents = f.contents.toString()
+						.replace('this.version = [^;]*', `this.version = "${argv.version}";`);
+					contents = replaceBrowser(contents, {
+						browserExt: true,
+						firefox: browser == 'firefox',
+						manifestV3: browser == 'manifestv3'
+					});
+					f.contents = Buffer.from(contents);
+				}
+				f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/` + parts.slice(i+1).join('/');
+				console.log(`-> ${f.path.slice(f.cwd.length)}`);
+				this.push(f);
 			}
 		}
 		if (type === 'common' || type === 'safari') {
@@ -341,7 +345,7 @@ function processFile() {
 				+ parts.slice(i+3).join('/');
 			console.log(`-> ${f.path.slice(f.cwd.length)}`);
 			this.push(f);
-			['chrome', 'firefox', 'manifestv3'].forEach((browser) => {
+			['manifestv3', 'firefox'].forEach((browser) => {
 				f = file.clone({contents: false});
 				f.path = parts.slice(0, i-1).join('/') + `/build/${browser}/zotero-google-docs-integration/`
 					+ parts.slice(i+3).join('/');
@@ -383,10 +387,11 @@ gulp.task('process-custom-scripts', function() {
 		'./src/browserExt/background-worker.js',
 		'./src/browserExt/manifest.json',
 		'./src/browserExt/manifest-v3.json',
-		'./src/browserExt/confirm.html',
+		'./src/browserExt/confirm/confirm.html',
 		'./src/common/preferences/preferences.html',
 		'./src/common/progressWindow/progressWindow.html',
 		'./src/common/modalPrompt/modalPrompt.html',
+		'./src/browserExt/offscreen/offscreenSandbox.html',
 		'./src/common/schema.js',
 		'./src/common/zotero.js',
 		'./src/common/zotero_config.js',
@@ -394,9 +399,6 @@ gulp.task('process-custom-scripts', function() {
 		'./src/**/*.jsx',
 		'./src/zotero-google-docs-integration/src/connector/**',
 	];
-	if (!argv.p) {
-		sources.push('./src/common/test/**/*.js');	
-	}
 	return gulp.src(sources)
 		.pipe(plumber())
 		.pipe(processFile())

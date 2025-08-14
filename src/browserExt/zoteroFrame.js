@@ -28,56 +28,81 @@
  */
 class ZoteroFrame {
 	/**
-	 * @property initializedPromise {Promise} resolves when the frame messaging is initialized
 	 * @param attributes {Object} frame attributes.
 	 * @param style {Object} CSSStyleDeclaration type style for the frame.
 	 * @param messagingOptions {Object} If provided will set up frame messaging. See messagingGeneric.js
 	 */
 	constructor(attributes={}, style={}, messagingOptions) {
 		if (!attributes.src) throw new Error("Attempted to construct a Zotero frame with no src attribute");
+		this._initializedPromise = this._init(attributes, style, messagingOptions);
+	}
+
+	/**
+	 * @returns {Promise} resolves when the frame messaging is initialized
+	 */
+	async init() {
+		return this._initializedPromise;
+	}
+	
+	async _init(attributes={}, style={}, messagingOptions) {
 		attributes = Object.assign({
-			id: Zotero.Utilities.randomString()
+			id: Zotero.Utilities.randomString(),
+			frameborder: "0"
 		}, attributes);
+
+		// Making the frame invisible to website code via a closed shadow DOM
+		// See https://stackoverflow.com/a/68689866
+		this.parentDiv = document.createElement('div');
+		const root = this.parentDiv.attachShadow({mode: 'closed'});
+
 		this._frame = document.createElement("iframe");
+		this._frame.hidden = true;
+		root.appendChild(this._frame);
+		this._setFrameAttributes(attributes, style);
+		await new Promise((resolve, reject) => {
+			this._frame.onload = resolve;
+			this._frame.onerror = reject;
+			(document.body || document.documentElement)?.appendChild(this.parentDiv);
+		});
+
+		if (messagingOptions) {
+			await this._initMessaging(messagingOptions);
+		}
+	}
+	
+	_setFrameAttributes(attributes, style) {
 		for (let key in attributes) {
-			this._frame[key] = attributes[key];
+			if (this._frame.getAttribute(key) !== attributes[key]) {
+				this._frame.setAttribute(key, attributes[key]);
+			}
 		}
 		for (let key in style) {
-			this._frame.style[key] = style[key];
+			if (this._frame.style[key] !== style[key]) {
+				this._frame.style[key] = style[key];
+			}
 		}
-		this._frame.setAttribute("frameborder", "0");
-
-		if (!messagingOptions) {
-			this.initializedPromise = Zotero.Promise.resolve();
-		}
-		else {
-			this._initializedDeferred = Zotero.Promise.defer();
-			this.initializedPromise = this._initializedDeferred.promise;
-			this._initMessaging(messagingOptions);
-		
-			this.addMessageListener('frameReady', () => {
-				this._initializedDeferred.resolve();
-				return true;
-			});
-		}
-		
-		document.body.appendChild(this._frame);
 	}
 
 	remove() {
-		document.body.removeChild(this._frame);
+		document.body?.removeChild(this._frame);
 	}
 	
-	_initMessaging(messagingOptions) {
+	async _initMessaging(messagingOptions) {
 		if (!messagingOptions.sendMessage) {
-			messagingOptions.sendMessage = (...args) => this._frame.contentWindow.postMessage(args, '*');
-		}
-		if (!messagingOptions.addMessageListener) {
-			messagingOptions.addMessageListener = (fn) => window.addEventListener('message', (messageEvent) => {
-				if (messageEvent.data && Array.isArray(messageEvent.data)) {
-					fn(messageEvent.data);
-				}
-			});
+			const mc = new MessageChannel();
+			// The webpage can technically capture this and snoop messages
+			// but we're not sending any sensitive data anyway
+			this._frame.contentWindow.postMessage("zoteroChannel", '*', [mc.port2]);
+			await new Promise(cb => { mc.port1.onmessage = cb; });
+			mc.port1.onmessage = null;
+			// Established a 2-way secure messaging channel at this point
+			
+			messagingOptions.sendMessage = (...args) => {
+				mc.port1.postMessage(args)
+			};
+			messagingOptions.addMessageListener = (fn) => {
+				mc.port1.onmessage = (e) => fn(e.data);
+			};
 		}
 		this._messaging = new Zotero.MessagingGeneric(messagingOptions);
 		this.addMessageListener = this._messaging.addMessageListener.bind(this._messaging);
@@ -85,3 +110,5 @@ class ZoteroFrame {
 	}
 	
 }
+
+export default ZoteroFrame;
