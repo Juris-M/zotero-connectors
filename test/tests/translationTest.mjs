@@ -288,7 +288,7 @@ describe("Translation", function() {
 						var frame = await tab.page.waitForFrame(frameURL);
 						var elem = await frame.waitForSelector('#zotero-modal-prompt');
 						var message = await elem.evaluate(node => node.textContent);
-						assert.include(message, 'The Zotero Connector was unable to communicate with the Zotero desktop application.');
+						assert.include(message, 'The Juris-M Connector was unable to communicate with the Juris-M desktop application.');
 					} finally {
 						await background(function() {
 							Zotero.Prefs.get.restore();
