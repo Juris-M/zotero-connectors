@@ -2,7 +2,7 @@
 	"name": "Juris-M Connector",
 	"manifest_version": 2,
 	"version": "AUTOFILLED",
-	"description": "Save references to Zotero from your web browser",
+	"description": "Save references to Juris-M from your web browser",
 	"default_locale": "en",
 	"browser_action": {
 		"default_icon": {
@@ -60,7 +60,7 @@
 		"itemSaver.js"
 	],
 	"content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
-	"homepage_url": "https://www.zotero.org/",
+	"homepage_url": "https://juris-m.github.io/",
 	"icons": {
 		"16": "Icon-16.png",
 		"48": "Icon-48.png",
