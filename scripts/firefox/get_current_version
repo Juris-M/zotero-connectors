@@ -9,11 +9,13 @@ ROOT_DIR="$( cd "$DIR"/../.. && pwd )"
 channel=${1:-release}
 
 # Use JM node deployer
-DEPLOYER_TAG=${DEPLOYER_UPDATE_TAG/CHANNEL/$channel}
-RET=$(node "$ROOT_DIR/deployer/index.js" -q -d "${DEPLOYER_TAG}updates.json" | jq -r '.addons["jurism@juris-m.github.io"].updates[-1].version')
+DEPLOYER_CHANNEL_TAG="${DEPLOYER_TOP_TAG}/firefox/$channel"
+
+RET=$(node "$ROOT_DIR/deployer/index.js" -q -d "${DEPLOYER_CHANNEL_TAG}/updates.json" | jq -r '.addons["jurism@juris-m.github.io"].updates[-1].version')
 
 if [ "$RET" == "" ]; then 
     echo "null"
 else
     echo "$RET"
 fi
+ 

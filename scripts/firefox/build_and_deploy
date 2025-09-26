@@ -20,7 +20,9 @@ DONE
 
 channel="release"
 version=""
-while getopts "c:v:" opt; do
+sign_only=0
+uploadme=0
+while getopts "c:v:SU" opt; do
 	case $opt in
 		c)
 			channel="$OPTARG"
@@ -28,6 +30,12 @@ while getopts "c:v:" opt; do
 		v)
 			version="$OPTARG"
 			;;
+        S)
+            sign_only=1
+            ;;
+        U)
+            uploadme=1
+            ;;
 		*)
 			usage
 			;;
@@ -40,23 +48,34 @@ if [ -z "$version" ]; then
 fi
 
 current_version=`$DIR/get_current_version $channel`
+
 if [ $current_version = 'null' ]; then
 	current_version="0.0.1"
 fi
 
+echo current_version: $current_version
 
 if [ $channel != "release" ]; then
 	rev=$($DIR/get_last_rev $channel $version)
-	((++rev))
+    echo Last rev for this version: $rev
+	echo $((rev++)) > /dev/null
 	main_version=$version
 	version="$version$channel$rev"
 fi
 
-# Use beta Google Docs endpoint
-if [ $channel = "beta" ]; then
-        export ZOTERO_GOOGLE_DOCS_API_URL=$ZOTERO_GOOGLE_DOCS_API_URL_BETA
-        export ZOTERO_GOOGLE_DOCS_OAUTH_CLIENT_KEY=$ZOTERO_GOOGLE_DOCS_OAUTH_CLIENT_KEY_BETA
+echo channel: ${channel}
+
+if [ $sign_only -eq 1 -a "$( ls "$BUILD_DIR"/*.xpi | wc -l )" -gt 0 ]; then
+	echo XPI already exists in $BUILD_DIR
+    echo Use the -u option?
+    echo Aborting
 fi
+
+# Use beta Google Docs endpoint
+#if [ $channel = "beta" ]; then
+#        export ZOTERO_GOOGLE_DOCS_API_URL=$ZOTERO_GOOGLE_DOCS_API_URL_BETA
+#        export ZOTERO_GOOGLE_DOCS_OAUTH_CLIENT_KEY=$ZOTERO_GOOGLE_DOCS_OAUTH_CLIENT_KEY_BETA
+#fi
 
 # Replace 'beta' with 'beta.' so that semver sorts beta10 > beta9
 # https://github.com/npm/node-semver/issues/30#issuecomment-64028037
@@ -74,39 +93,52 @@ if [ "$CMP" != "1" ]; then
 	exit 1
 fi
 
-cd "$ROOT_DIR"
+if [ $uploadme -eq 0 ]; then
 
-echo -n "Building $version"
-sleep 1
-echo -n .
-sleep 1
-echo -n .
-sleep 1
-echo .
-sleep 1
+	cd "$ROOT_DIR"
 
-./build.sh -p b -v "$version"
+	echo -n "Building $version"
+	sleep 1
+	echo -n .
+	sleep 1
+	echo -n .
+	sleep 1
+	echo .
+	sleep 1
 
-if [ $channel != "release" ]; then
-	# Add Git commit hash to XPI files
-	hash=$(git rev-parse --short HEAD)
-	echo "$version+$hash" > $BUILD_DIR/firefox/build_id
+	./build.sh -p b -v "$version"
+
+	if [ $channel != "release" ]; then
+		# Add Git commit hash to XPI files
+		hash=$(git rev-parse --short HEAD)
+		echo "$version+$hash" > $BUILD_DIR/firefox/build_id
+	fi
+
+	CONNECTOR_CHANNEL_URL="${CONNECTOR_TOP_URL}/firefox/$channel"
+	cat "$BUILD_DIR/firefox/manifest.json" | jq ".applications.gecko.update_url = \"$CONNECTOR_CHANNEL_URL\"" > $BUILD_DIR/firefox/manifest.json-new
+	mv $BUILD_DIR/firefox/manifest.json-new $BUILD_DIR/firefox/manifest.json
+
+	echo
+	echo manifest.json:
+	echo
+	grep '"version"' $BUILD_DIR/firefox/manifest.json
+	grep update_url $BUILD_DIR/firefox/manifest.json
+	echo
+	sleep 2
+
+	cd "$DIR"
+	./sign_xpi
+
+	if [ $sign_only -eq 1 ]; then
+
+		echo We have a signed xpi. So far so good.
+		exit 0
+
+	fi
+
 fi
 
-FIREFOX_UPDATE_URL=${FIREFOX_UPDATE_URL/CHANNEL/$channel}
-cat "$BUILD_DIR/firefox/manifest.json" | jq ".applications.gecko.update_url = \"$FIREFOX_UPDATE_URL\"" > $BUILD_DIR/firefox/manifest.json-new
-mv $BUILD_DIR/firefox/manifest.json-new $BUILD_DIR/firefox/manifest.json
-
-echo
-echo manifest.json:
-echo
-grep '"version"' $BUILD_DIR/firefox/manifest.json
-grep update_url $BUILD_DIR/firefox/manifest.json
-echo
-sleep 2
-
 cd "$DIR"
-./sign_xpi
 echo "Pushing XPI"
 
 ./push_xpi $channel

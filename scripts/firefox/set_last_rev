@@ -20,6 +20,6 @@ version=$2
 rev=$3
 
 echo $rev > "$ROOT_DIR/lastrev-$version"
-DEPLOYER_TAG=${DEPLOYER_UPDATE_TAG/CHANNEL/$channel}
-node "$ROOT_DIR/deployer/index.js" -u "$ROOT_DIR/lastrev-$version" "${DEPLOYER_TAG}lastrev-$version"
+DEPLOYER_CHANNEL_TAG="${DEPLOYER_TOP_TAG}/firefox/$channel"
+node "$ROOT_DIR/deployer/index.js" -u "$ROOT_DIR/lastrev-$version" "${DEPLOYER_CHANNEL_TAG}/lastrev-$version"
 rm "$ROOT_DIR/lastrev-$version"

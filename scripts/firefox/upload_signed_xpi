@@ -24,7 +24,7 @@ if ! unzip -l "$XPI" | grep --quiet META-INF; then
 	exit 1
 fi
 
-DEPLOYER_TAG=${DEPLOYER_PLUGIN_TAG/CHANNEL/$channel}
-node "$ROOT_DIR/deployer/index.js" -t "application/x-xpinstall" -u "$XPI" "${DEPLOYER_TAG}Jurism_Connector-$VERSION.xpi"
+DEPLOYER_CHANNEL_TAG="${DEPLOYER_TOP_TAG}/firefox/$channel"
+node "$ROOT_DIR/deployer/index.js" -t "application/x-xpinstall" -u "$XPI" "${DEPLOYER_CHANNEL_TAG}/Jurism_Connector-$VERSION.xpi"
 
 rm $XPI

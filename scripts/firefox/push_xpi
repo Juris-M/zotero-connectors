@@ -22,12 +22,12 @@ HASH="$( sha256sum "$XPI" | cut -d' ' -f1 )"
 ./upload_signed_xpi $channel
 
 # scp $DEPLOY_HOST:"$MANIFEST_DEPLOY_PATH/$channel/updates.json" "$BUILD_DIR/updates.json"
-DEPLOYER_TAG=${DEPLOYER_UPDATE_TAG/CHANNEL/$channel}
-node "$ROOT_DIR/deployer/index.js" -d "${DEPLOYER_TAG}updates.json" "$BUILD_DIR/updates.json"
+DEPLOYER_CHANNEL_TAG="${DEPLOYER_TOP_TAG}/firefox/$channel"
+node "$ROOT_DIR/deployer/index.js" -d "${DEPLOYER_CHANNEL_TAG}/updates.json" "$BUILD_DIR/updates.json"
 
 ./update_manifest -f "$BUILD_DIR/updates.json" -c $channel -v $VERSION -s $HASH
 
 # scp "$BUILD_DIR/updates.json" $DEPLOY_HOST:"$MANIFEST_DEPLOY_PATH/$channel/updates.json"
-node "$ROOT_DIR/deployer/index.js" -u "$BUILD_DIR/updates.json" "${DEPLOYER_TAG}updates.json"
+node "$ROOT_DIR/deployer/index.js" -u "$BUILD_DIR/updates.json" "${DEPLOYER_CHANNEL_TAG}/updates.json"
 
 rm "$BUILD_DIR/updates.json"

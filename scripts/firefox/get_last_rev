@@ -18,5 +18,5 @@ fi
 channel=$1
 version=$2
 
-DEPLOYER_TAG=${DEPLOYER_UPDATE_TAG/CHANNEL/$channel}
-node "$ROOT_DIR/deployer/index.js" -q -d "${DEPLOYER_TAG}lastrev-$version" || echo -n 0
+DEPLOYER_CHANNEL_TAG="${DEPLOYER_TOP_TAG}/firefox/$channel"
+node "$ROOT_DIR/deployer/index.js" -q -d "${DEPLOYER_CHANNEL_TAG}/lastrev-$version" || echo -n 0
