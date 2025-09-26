@@ -32,7 +32,7 @@ const through = require('through2');
 const gulp = require('gulp');
 const plumber = require('gulp-plumber');
 const babel = require('@babel/core');
-const schemaJSON = require('./src/zotero-schema/schema.json');
+const schemaJSON = require('./src/zotero-schema/schema-jurism.json');
 const argv = require('yargs')
 	.boolean('p')
 	.alias('p', 'production')
